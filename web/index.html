@@ -17,14 +17,28 @@
     </div>
     <div class="sources">
       <div class="files" id="files" aria-label="Opened file"></div>
-      <button class="chip add" id="open-another" data-pick title="Open another PDF">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
-        Open another
-      </button>
+    </div>
+    <div class="segmented views" id="views" role="radiogroup" aria-label="View">
+      <label title="The original pages, and where they are cut">
+        <input type="radio" name="view" value="original">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2" width="10" height="20" rx="1.5"/><path d="M7 9h10"/><path d="M7 14h10"/></svg>Original</span>
+      </label>
+      <label title="The original and the split pages side by side">
+        <input type="radio" name="view" value="both">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>Side by side</span>
+      </label>
+      <label title="The pages of the split PDF">
+        <input type="radio" name="view" value="split">
+        <span><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="8" height="12" rx="1"/><rect x="13" y="7" width="8" height="12" rx="1"/></svg>Split</span>
+      </label>
     </div>
     <div class="actions">
       <button class="btn ghost icon-btn" id="theme" title="Switch between light and dark mode" aria-label="Switch between light and dark mode">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="btn" id="print" disabled title="Print the split PDF (Ctrl+P)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9V3h12v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M6 14h12v7H6z"/></svg>
+        Print
       </button>
       <button class="btn primary" id="download" disabled title="Download the split PDF (Ctrl+S)">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -101,11 +115,16 @@
       <div class="scroller" id="original" tabindex="0"></div>
     </section>
 
-    <div class="gutter"></div>
+    <div class="gutter">
+      <button class="gutter-toggle" id="link-scroll" aria-pressed="true" aria-label="Link scrolling">
+        <svg class="icon-linked" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+        <svg class="icon-unlinked" viewBox="0 0 24 24" aria-hidden="true"><path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 7.07 7.07l1.71-1.71"/><path d="M8 2v3"/><path d="M2 8h3"/><path d="M16 19v3"/><path d="M19 16h3"/></svg>
+      </button>
+    </div>
 
-    <section class="pane" id="pane-result" aria-label="Result">
+    <section class="pane" id="pane-result" aria-label="Split">
       <header class="pane-head">
-        <h2>Result</h2>
+        <h2>Split</h2>
         <span class="meta" id="result-meta"></span>
         <span class="legend"><i class="sw overlap"></i>also on the next or previous page</span>
       </header>

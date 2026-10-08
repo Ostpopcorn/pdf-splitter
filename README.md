@@ -10,10 +10,10 @@ is repeated at the top of the next one, so that a line that is cut at the
 end of a page is whole on the next page.
 
 ## Web App
-The web app shows where each page is cut, and the pages of paper, before you
-download the PDF: open or drop your PDF on the page.  It runs Python in your
-browser with [Pyodide](https://pyodide.org), so your files never leave your
-computer.
+The web app shows the pages of paper, and where each page is cut, before you
+print or download the split PDF: open or drop your PDF on the page.  It runs
+Python in your browser with [Pyodide](https://pyodide.org), so your files
+never leave your computer.
 
 ![Screenshot of the web app](web/screenshot.png)
 
@@ -28,8 +28,17 @@ computer.
 * A page is made up to 10 % smaller (the _shrink_) if it then needs fewer
   pages, e.g., a page of a reMarkable, which is a bit too long for Letter, or
   a long page whose last bit would be almost alone on a page.
-* Point at a page of paper to see where it comes from, and click it to
-  scroll there.  Click a number on the left of the original to see its page.
+* Show the split pages, the original pages with the cuts, or both _side by
+  side_.  Side by side, scrolling is linked like in TeX Tools: both sides show
+  the same part of the page.  Click the link between them to scroll them
+  separately.  Point at a page of paper to see where it comes from, and click
+  it to scroll there.  Click a number on the left of the original to see its
+  page.
+* Print the split PDF directly (Ctrl+P), or download it (Ctrl+S).  Safari
+  opens it in a new tab, where you print it, since it cannot print a PDF in
+  the page.
+* One PDF is open at a time.  Close it with the × next to its name, or drop
+  another PDF on the page.
 * The strokes stay vectors, so they are as sharp as in the original, and each
   page is in the PDF only once, however many pages of paper show it.
 * Annotations, e.g., comments or links, are not in the split PDF.  The web
