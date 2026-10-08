@@ -178,7 +178,8 @@ def test_cli(tmp_path, tall_pdf, capsys):
 
 def _render(pdfium, data, scale):
     document = pdfium.PdfDocument(data)
-    return [document[_i].render(scale=scale, grayscale=True).to_pil().convert("L")
+    # gray pixels as an array, without Pillow
+    return [document[_i].render(scale=scale, grayscale=True).to_numpy().astype(int)
             for _i in range(len(document))]
 
 
@@ -210,15 +211,14 @@ def test_rendered_slices(box, rotation, margin):
     result = split_pdf(source, Options(overlap=25, margin=margin))
     layout = result.layouts[0]
     resolution = 0.5  # pixels per point of the original
-    original = numpy.asarray(_render(pdfium, source, resolution)[0], int)
+    original = _render(pdfium, source, resolution)[0]
     assert original.shape == (round(layout.height * resolution),
                               round(layout.width * resolution))
     pages = _render(pdfium, result.data, resolution / layout.scale)
     assert len(pages) == len(layout.slices) > 0
     edge = round(margin * MM * resolution / layout.scale)
     left = edge + round(layout.left * resolution / layout.scale)
-    for _page, (_top, _bottom) in zip(pages, layout.slices):
-        page = numpy.asarray(_page, int)
+    for page, (_top, _bottom) in zip(pages, layout.slices):
         top = round(_top * resolution)
         rows = min(round(_bottom * resolution), original.shape[0]) - top
         width = original.shape[1]
