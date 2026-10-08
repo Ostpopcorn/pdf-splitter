@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PDF Splitter in your browser</title>
+  <meta name="description" content="Split tall pages, e.g., of notes from a reMarkable, onto A4 with an overlap, so that no line of handwriting is cut in half. In your browser.">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="style.css">
+  <script type="module" src="app.js"></script>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <img src="favicon.svg" alt="" width="28" height="28">
+      <span>PDF Splitter <em class="tagline">in your browser</em></span>
+    </div>
+    <div class="sources">
+      <div class="files" id="files" aria-label="Opened file"></div>
+      <button class="chip add" id="open-another" data-pick title="Open another PDF">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="m7 8 5-5 5 5"/><path d="M5 21h14"/></svg>
+        Open another
+      </button>
+    </div>
+    <div class="actions">
+      <button class="btn ghost icon-btn" id="theme" title="Switch between light and dark mode" aria-label="Switch between light and dark mode">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button class="btn primary" id="download" disabled title="Download the split PDF (Ctrl+S)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
+        Download .pdf
+      </button>
+    </div>
+  </header>
+
+  <section class="options" id="options" aria-label="Settings">
+    <article class="card">
+      <div class="field field-paper">
+        <div class="field-head">
+          <h3 id="paper-label">Paper</h3>
+          <p>Each page is scaled to its width</p>
+        </div>
+        <div class="segmented" id="paper" role="radiogroup" aria-labelledby="paper-label"></div>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <h3><label for="overlap-number">Overlap</label></h3>
+          <p>The end of a page is repeated at the top of the next one</p>
+        </div>
+        <div class="range">
+          <input type="range" id="overlap" data-setting="overlap" min="0" max="100" step="1" aria-label="Overlap in mm">
+          <span class="number"><input type="number" id="overlap-number" data-setting="overlap" min="0" max="100" step="1"><span>mm</span></span>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <h3><label for="margin-number">Margin</label></h3>
+          <p>For a printer that does not print to the edge</p>
+        </div>
+        <div class="range">
+          <input type="range" id="margin" data-setting="margin" min="0" max="25" step="1" aria-label="Margin in mm">
+          <span class="number"><input type="number" id="margin-number" data-setting="margin" min="0" max="25" step="1"><span>mm</span></span>
+        </div>
+      </div>
+      <div class="field">
+        <div class="field-head">
+          <h3><label for="shrink-number">Shrink</label></h3>
+          <p>Up to this much smaller to save a page</p>
+        </div>
+        <div class="range">
+          <input type="range" id="shrink" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent">
+          <span class="number"><input type="number" id="shrink-number" data-setting="shrink" min="0" max="25" step="1"><span>%</span></span>
+        </div>
+      </div>
+    </article>
+  </section>
+
+  <main class="workspace" id="workspace">
+    <section class="empty" id="empty">
+      <div class="drop-card">
+        <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="m9 14 3-3 3 3"/></svg>
+        <h1>Drop your PDF here</h1>
+        <p>Pages that are too long for the paper, e.g., notes from a reMarkable, are split onto several pages with an overlap, so that no line of handwriting is cut in half. See where each page is cut before you download it.</p>
+        <div class="drop-actions">
+          <button class="btn primary large" data-pick>Open PDF</button>
+          <button class="btn large" id="example">Try an example</button>
+        </div>
+        <p class="privacy">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          Your files never leave your computer. Everything runs in your browser.
+        </p>
+      </div>
+    </section>
+
+    <section class="pane" id="pane-original" aria-label="Original">
+      <header class="pane-head">
+        <h2>Original</h2>
+        <span class="meta" id="original-meta"></span>
+        <span class="legend"><i class="sw overlap"></i>overlap</span>
+      </header>
+      <div class="scroller" id="original" tabindex="0"></div>
+    </section>
+
+    <div class="gutter"></div>
+
+    <section class="pane" id="pane-result" aria-label="Result">
+      <header class="pane-head">
+        <h2>Result</h2>
+        <span class="meta" id="result-meta"></span>
+        <span class="legend"><i class="sw overlap"></i>also on the next or previous page</span>
+      </header>
+      <div class="scroller" id="result" tabindex="0"></div>
+      <div class="overlay" id="overlay">
+        <div class="spinner" aria-hidden="true"></div>
+        <p id="overlay-text">Starting Python…</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="status" id="status" aria-live="polite">
+    <div class="status-left" id="status-counts"></div>
+    <div class="status-messages" id="status-messages"></div>
+    <div class="credits">
+      <a class="credit-link" href="https://github.com/Ostpopcorn/pdf-splitter" target="_blank" rel="noopener" title="The code of PDF Splitter"><svg class="icon-fill" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg><span>Source</span></a>
+      <span aria-hidden="true">·</span>
+      <a class="credit-link" href="https://ostpopcorn.github.io/tex-tools/" target="_blank" rel="noopener" title="Remove the comments of LaTeX files in your browser"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5 16 19"/></svg><span>TeX Tools</span></a>
+      <span aria-hidden="true">·</span>
+      <a class="credit-link" href="https://ostpopcorn.github.io/bibtex-tools/" target="_blank" rel="noopener" title="Clean up bib files in your browser"><svg viewBox="6 6 20 20" aria-hidden="true"><path d="M12.5 8.5c-2 0-2.5 1-2.5 3v1.8c0 1.3-.7 2.2-2 2.7 1.3.5 2 1.4 2 2.7v1.8c0 2 .5 3 2.5 3"/><path d="M19.5 8.5c2 0 2.5 1 2.5 3v1.8c0 1.3.7 2.2 2 2.7-1.3.5-2 1.4-2 2.7v1.8c0 2-.5 3-2.5 3"/></svg><span>BibTeX Tools</span></a>
+      <span aria-hidden="true">·</span>
+      <button class="credit-link" id="about-open"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/></svg><span>About</span></button>
+    </div>
+    <div class="status-right"><span class="dot" id="engine-dot"></span><span id="engine-state">Loading Python…</span></div>
+  </footer>
+
+  <dialog class="dialog about-dialog" id="about-dialog" aria-labelledby="about-title">
+    <header class="dialog-head">
+      <h2 id="about-title">About PDF Splitter</h2>
+      <span class="spacer"></span>
+      <button class="btn ghost icon-btn" data-dialog-close aria-label="Close">×</button>
+    </header>
+    <div class="about-body">
+      <p><strong>PDF Splitter</strong> prints notes with pages that are longer than the paper, e.g., from a reMarkable. Each page is scaled to the width of the paper and split onto as many pages as it needs. The end of each page is repeated at the top of the next one, so that a line of handwriting that is cut at the end of a page is whole on the next page. The strokes stay sharp vectors, and each page is in the PDF only once, however often it is shown.</p>
+      <div class="about-links">
+        <a class="about-link" href="https://github.com/Ostpopcorn/pdf-splitter" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
+          <span><strong>Ostpopcorn/pdf-splitter</strong><small>The code of PDF Splitter by Ostpopcorn, also as a Python command</small></span>
+        </a>
+        <a class="about-link" href="https://ostpopcorn.github.io/tex-tools/" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5 16 19"/></svg>
+          <span><strong>TeX Tools</strong><small>Remove the comments of LaTeX files in your browser</small></span>
+        </a>
+        <a class="about-link" href="https://ostpopcorn.github.io/bibtex-tools/" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20V3H6.5A2.5 2.5 0 0 0 4 5.5z"/><path d="M4 19.5A2.5 2.5 0 0 0 6.5 22H20v-5"/></svg>
+          <span><strong>BibTeX Tools</strong><small>Clean up the bib file of your paper in your browser</small></span>
+        </a>
+      </div>
+      <p class="about-small">PDF Splitter is free software under the <a href="https://www.gnu.org/licenses/gpl-3.0.html" target="_blank" rel="noopener">GNU General Public License v3</a>. It runs Python in your browser with <a href="https://pyodide.org" target="_blank" rel="noopener">Pyodide</a> (MPL-2.0), which includes the Python standard library (PSF License), and writes the PDF with <a href="https://github.com/py-pdf/pypdf" target="_blank" rel="noopener">pypdf</a> (BSD-3-Clause). It shows the pages with <a href="https://mozilla.github.io/pdf.js/" target="_blank" rel="noopener">pdf.js</a> (<a href="pdfjs/LICENSE" target="_blank" rel="noopener">Apache-2.0</a>).</p>
+      <p class="about-small">The title uses the font Parisienne by Astigmatic under the <a href="fonts/OFL-Parisienne.txt" target="_blank" rel="noopener">SIL Open Font License 1.1</a>.</p>
+      <p class="about-small" id="about-version"></p>
+    </div>
+  </dialog>
+
+  <input type="file" id="pick" accept=".pdf,application/pdf" hidden>
+  <div class="toast" id="toast" role="status"></div>
+</body>
+</html>

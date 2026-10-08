@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdfsplitter"
+dynamic = ["version"]
+authors = [
+  {name = "Ostpopcorn"}
+]
+requires-python = ">=3.9"
+description = "Split tall pages, e.g., of notes from a reMarkable, onto pages of paper with an overlap"
+readme = "README.md"
+license = {file = "LICENSE"}
+keywords = ["pdf", "split", "remarkable", "print", "a4"]
+classifiers = [
+	"License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3 :: Only",
+	"Topic :: Printing"
+]
+dependencies = [
+  "pypdf>=5"
+]
+
+[project.optional-dependencies]
+test = [
+  "pytest",
+  "pypdfium2",
+  "numpy"
+]
+
+[project.scripts]
+pdf-splitter = "pdfsplitter.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/Ostpopcorn/pdf-splitter.git"
+
+[tool.setuptools]
+packages = ["pdfsplitter"]
+
+[tool.setuptools.dynamic]
+version = {attr = "pdfsplitter.__version__"}
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = [".", "tests"]
