@@ -1,6 +1,7 @@
 // PDF Splitter web app: the settings, the file, the views of the original and
 // the split pages, downloading and printing. The PDF is split by pdfsplitter
-// (Python) in worker.js, and its pages are shown with pdf.js.
+// (Python) in worker.js, and its pages are shown with pdf.js. A PNG image is
+// decoded by the browser and put in a PDF by pdfsplitter.
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -27,6 +28,10 @@ const DEFAULT_VIEW = "split";
 // The width of the rendered pages in pixels, and their largest area
 const RENDER_WIDTH = 1100;
 const RENDER_AREA = 24e6;
+// The largest image in pixels, and the pixels of each strip that is decoded,
+// since a browser limits the size of a canvas
+const MAX_IMAGE_AREA = 50e6;
+const IMAGE_STRIP = 4e6;
 // Safari prints a PDF in a frame as an empty page, so it opens the PDF in a
 // new tab to print it from there
 const PRINT_IN_TAB = /^((?!chrome|chromium|android|crios|fxios|edg).)*safari/i.test(navigator.userAgent);
@@ -36,9 +41,10 @@ const state = {
   view: VIEWS.includes(loadJson(VIEW_KEY, DEFAULT_VIEW)) ? loadJson(VIEW_KEY, DEFAULT_VIEW) : DEFAULT_VIEW,
   linkScroll: true,
   // {name, data, pages, views, title, annotations, task, images, failed} of
-  // the open PDF. Pages are the sizes of the pages from pdfsplitter, views
-  // from pdf.js, which shows them before Python has read the PDF. Task loads
-  // the PDF in pdf.js. Images are the rendered pages.
+  // the open PDF. Data is null while an image is put in a PDF. Pages are the
+  // sizes of the pages from pdfsplitter, views from pdf.js, which shows them
+  // before Python has read the PDF. Task loads the PDF in pdf.js. Images are
+  // the rendered pages.
   file: null,
   plan: null,
   // {key, data} of the last split PDF, for the settings in key
@@ -127,7 +133,7 @@ worker.onmessage = ({ data }) => {
     state.versions = `pdfsplitter ${data.version} · pypdf ${data.pypdf} · Pyodide ${data.pyodide}`;
     renderVersions();
     setEngine("ready", "Ready");
-    $("#overlay-text").textContent = "Reading the PDF…";
+    $("#overlay-text").textContent = readingText();
     plan();
   } else if (data.type === "read") {
     if (!state.file || data.id !== state.readId) return;
@@ -140,6 +146,15 @@ worker.onmessage = ({ data }) => {
     Object.assign(state.file, response);
     renderOriginal();
     plan();
+  } else if (data.type === "image") {
+    if (!state.file || data.id !== state.readId) return;
+    if (data.error) {
+      toast(`${state.file.name}: ${data.error}`);
+      closeFile();
+      return;
+    }
+    readPdf(state.file, data.data);
+    render();
   } else if (data.type === "plan") {
     if (data.id !== state.planId) return; // a newer plan is on its way
     setBusy(false);
@@ -241,23 +256,81 @@ $("#options").addEventListener("change", (event) => {
   }
 });
 
-/* The file: one PDF at a time, a new one takes the place of the open one */
+/* The file: one PDF or PNG image at a time, a new one takes the place of
+   the open one */
 
 const isPdf = (bytes) => new TextDecoder("latin1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
+const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+const isPng = (bytes) => PNG_SIGNATURE.every((byte, idx) => bytes[idx] === byte);
 
 async function openFile(file) {
   const data = new Uint8Array(await file.arrayBuffer());
-  if (!isPdf(data)) {
-    toast(`${file.name} is not a PDF`);
+  let image = null;
+  if (isPng(data)) {
+    try {
+      image = await decodeImage(file);
+    } catch (err) {
+      toast(`${file.name}: ${err instanceof RangeError ? err.message : "Could not read the image."}`);
+      return;
+    }
+  } else if (!isPdf(data)) {
+    toast(`${file.name} is not a PDF or a PNG image`);
     return;
   }
   closeFile();
-  state.file = { name: file.name, data, pages: null, views: [], images: [] };
-  state.readId += 1;
-  worker.postMessage({ type: "read", id: state.readId, data });
+  state.file = { name: file.name, data: null, pages: null, views: [], images: [] };
+  if (image) {
+    state.readId += 1;
+    worker.postMessage({ type: "image", id: state.readId, ...image }, [image.pixels.buffer]);
+  } else {
+    readPdf(state.file, data);
+  }
   resetScroll();
   render();
-  renderPages(state.file);
+}
+
+// Read the PDF in Python, and show its pages with pdf.js
+function readPdf(file, data) {
+  file.data = data;
+  state.readId += 1;
+  worker.postMessage({ type: "read", id: state.readId, data });
+  renderPages(file);
+}
+
+function readingText() {
+  return state.file && !state.file.data ? "Reading the image…" : "Reading the PDF…";
+}
+
+// Decode an image into RGB pixels, on white like the paper
+async function decodeImage(blob) {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const { width, height } = bitmap;
+    if (width * height > MAX_IMAGE_AREA) throw new RangeError("The image is too large.");
+    const rows = Math.max(1, Math.min(height, Math.floor(IMAGE_STRIP / width)));
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = rows;
+    const context = canvas.getContext("2d", { willReadFrequently: true });
+    if (!context) throw new RangeError("The image is too large.");
+    const pixels = new Uint8Array(width * height * 3);
+    let out = 0;
+    for (let top = 0; top < height; top += rows) {
+      const count = Math.min(rows, height - top);
+      context.fillStyle = "#ffffff";
+      context.fillRect(0, 0, width, count);
+      context.drawImage(bitmap, 0, top, width, count, 0, 0, width, count);
+      const rgba = context.getImageData(0, 0, width, count).data;
+      for (let idx = 0; idx < rgba.length; idx += 4) {
+        pixels[out++] = rgba[idx];
+        pixels[out++] = rgba[idx + 1];
+        pixels[out++] = rgba[idx + 2];
+      }
+    }
+    return { pixels, width, height };
+  } finally {
+    bitmap.close();
+  }
 }
 
 function closeFile() {
@@ -507,7 +580,7 @@ function render() {
   overlay.classList.toggle("show", Boolean(waiting || (file && state.error)));
   overlay.classList.toggle("error", Boolean(state.error));
   if (state.error) $("#overlay-text").textContent = state.error;
-  else if (waiting && state.ready) $("#overlay-text").textContent = "Reading the PDF…";
+  else if (waiting && state.ready) $("#overlay-text").textContent = readingText();
   const ready = Boolean(file && plan && state.ready);
   $("#download").disabled = !ready;
   $("#print").disabled = !ready;
@@ -820,8 +893,8 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-// notes.pdf is saved as notes-a4.pdf
-const splitName = (name, paper) => `${name.replace(/\.pdf$/i, "")}-${paper}.pdf`;
+// notes.pdf, or notes.png, is saved as notes-a4.pdf
+const splitName = (name, paper) => `${name.replace(/\.(pdf|png)$/i, "")}-${paper}.pdf`;
 // The split PDF is written again only when the settings change
 const outputKey = () => JSON.stringify(state.settings);
 

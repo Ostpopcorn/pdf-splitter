@@ -1,9 +1,10 @@
 """Bridge between the web app in the `web` folder and pdfsplitter. The web app
 runs this module in the browser with Pyodide and exchanges JSON strings with
-it, and PDFs as bytes."""
+it, and PDFs and the pixels of images as bytes."""
 import json
 from dataclasses import asdict, fields
 
+from .image import image_pdf
 from .split import (MM, PAPERS, Options, count_annotations, layout_page,
                     max_overlap, page_sizes, paper_size, read_pdf, split_pdf)
 
@@ -49,6 +50,12 @@ def read(data):
         return json.dumps({"error": "The PDF has no pages."})
     return json.dumps({"pages": sizes, "title": title or None,
                        "annotations": annotations})
+
+
+def image(pixels, width, height):
+    """Return a PDF (bytes) with one page that shows an image, which the
+    browser decoded into RGB pixels."""
+    return image_pdf(_bytes(pixels), int(width), int(height))
 
 
 def plan(request_json):

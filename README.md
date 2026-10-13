@@ -11,9 +11,9 @@ end of a page is whole on the next page.
 
 ## Web App
 The web app shows the pages of paper, and where each page is cut, before you
-print or download the split PDF: open or drop your PDF on the page.  It runs
-Python in your browser with [Pyodide](https://pyodide.org), so your files
-never leave your computer.
+print or download the split PDF: open or drop your PDF, or PNG image, on the
+page.  It runs Python in your browser with [Pyodide](https://pyodide.org), so
+your files never leave your computer.
 
 ![Screenshot of the web app](web/screenshot.png)
 
@@ -37,10 +37,15 @@ never leave your computer.
 * Print the split PDF directly (Ctrl+P), or download it (Ctrl+S).  Safari
   opens it in a new tab, where you print it, since it cannot print a PDF in
   the page.
-* One PDF is open at a time.  Close it with the × next to its name, or drop
-  another PDF on the page.
-* The strokes stay vectors, so they are as sharp as in the original, and each
-  page is in the PDF only once, however many pages of paper show it.
+* A PNG image, e.g., a page that is exported as an image, is split like a
+  page of a PDF.  Your browser reads the image, and its transparent parts are
+  white, like the paper.  The image stays pixels, so a PDF from a reMarkable
+  prints sharper.
+* One PDF or image is open at a time.  Close it with the × next to its name,
+  or drop another file on the page.
+* The strokes of a PDF stay vectors, so they are as sharp as in the
+  original, and each page is in the PDF only once, however many pages of
+  paper show it.
 * Annotations, e.g., comments or links, are not in the split PDF.  The web
   app tells you if a PDF has any.
 
@@ -63,7 +68,8 @@ pip install .
 pdf-splitter notes.pdf                      # writes notes-a4.pdf
 pdf-splitter notes.pdf --overlap 30 --margin 5 --paper letter -o print.pdf
 ```
-Use `--shrink 0` to scale every page to the width of the paper.
+Use `--shrink 0` to scale every page to the width of the paper.  The command
+reads PDFs, since it has no library to read images.
 
 In Python:
 ```python
@@ -75,6 +81,8 @@ with open("notes-a4.pdf", "wb") as _file:
     _file.write(result.data)
 print(result.pages, [len(_layout.slices) for _layout in result.layouts])
 ```
+`image_pdf(pixels, width, height)` puts an image, as RGB pixels, on a page of
+a PDF, which you can split like any other.
 
 ## Tests
 ```bash

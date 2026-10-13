@@ -1,12 +1,12 @@
 // Runs pdfsplitter with Pyodide, so that the page stays responsive while
 // Python works. Only the latest request to plan the pages is processed,
-// after the PDFs to read or to split.
+// after the images to put in a PDF, and the PDFs to read or to split.
 import { loadPyodide } from "./pyodide/pyodide.mjs";
 
 let bridge = null;
 let latest = null;
 let scheduled = false;
-const jobs = []; // PDFs to read ("read") or split ("split")
+const jobs = []; // images to put in a PDF ("image"), PDFs to read ("read") or split ("split")
 
 async function init() {
   postMessage({ type: "progress", text: "Starting Python…" });
@@ -33,10 +33,12 @@ function process() {
       if (job.type === "read") {
         postMessage({ type: "read", id: job.id, response: bridge.read(job.data) });
       } else {
-        const proxy = bridge.split(job.data, JSON.stringify(job.request));
+        const proxy = job.type === "image"
+          ? bridge.image(job.pixels, job.width, job.height)
+          : bridge.split(job.data, JSON.stringify(job.request));
         const data = proxy.toJs();
         proxy.destroy();
-        postMessage({ type: "split", id: job.id, data }, [data.buffer]);
+        postMessage({ type: job.type, id: job.id, data }, [data.buffer]);
       }
     } catch (err) {
       postMessage({ type: job.type, id: job.id, error: pythonError(err) });
@@ -68,7 +70,7 @@ function schedule() {
 
 self.onmessage = (event) => {
   if (event.data.type === "plan") latest = event.data;
-  else if (event.data.type === "read" || event.data.type === "split") jobs.push(event.data);
+  else if (["image", "read", "split"].includes(event.data.type)) jobs.push(event.data);
   else return;
   schedule();
 };

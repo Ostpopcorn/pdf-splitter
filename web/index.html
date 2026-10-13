@@ -93,10 +93,10 @@
     <section class="empty" id="empty">
       <div class="drop-card">
         <svg class="drop-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/><path d="M12 17v-6"/><path d="m9 14 3-3 3 3"/></svg>
-        <h1>Drop your PDF here</h1>
+        <h1>Drop your PDF or PNG here</h1>
         <p>Pages that are too long for the paper, e.g., notes from a reMarkable, are split onto several pages with an overlap, so that no line of handwriting is cut in half. See where each page is cut before you download it.</p>
         <div class="drop-actions">
-          <button class="btn primary large" data-pick>Open PDF</button>
+          <button class="btn primary large" data-pick>Open file</button>
           <button class="btn large" id="example">Try an example</button>
         </div>
         <p class="privacy">
@@ -158,7 +158,7 @@
       <button class="btn ghost icon-btn" data-dialog-close aria-label="Close">×</button>
     </header>
     <div class="about-body">
-      <p><strong>PDF Splitter</strong> prints notes with pages that are longer than the paper, e.g., from a reMarkable. Each page is scaled to the width of the paper and split onto as many pages as it needs. The end of each page is repeated at the top of the next one, so that a line of handwriting that is cut at the end of a page is whole on the next page. The strokes stay sharp vectors, and each page is in the PDF only once, however often it is shown.</p>
+      <p><strong>PDF Splitter</strong> prints notes with pages that are longer than the paper, e.g., from a reMarkable. Each page is scaled to the width of the paper and split onto as many pages as it needs. The end of each page is repeated at the top of the next one, so that a line of handwriting that is cut at the end of a page is whole on the next page. The strokes of a PDF stay sharp vectors, and each page is in the PDF only once, however often it is shown. A PNG image, e.g., a page exported as an image, is split like a page of a PDF.</p>
       <div class="about-links">
         <a class="about-link" href="https://github.com/Ostpopcorn/pdf-splitter" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>
@@ -179,7 +179,7 @@
     </div>
   </dialog>
 
-  <input type="file" id="pick" accept=".pdf,application/pdf" hidden>
+  <input type="file" id="pick" accept=".pdf,application/pdf,.png,image/png" hidden>
   <div class="toast" id="toast" role="status"></div>
 </body>
 </html>
