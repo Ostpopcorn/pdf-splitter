@@ -6,7 +6,10 @@ import { loadPyodide } from "./pyodide/pyodide.mjs";
 let bridge = null;
 let latest = null;
 let scheduled = false;
-const jobs = []; // images to put in a PDF ("image"), PDFs to read ("read") or split ("split")
+// images to put in a PDF ("image" as pixels, "jpeg"), PDFs to read ("read")
+// or to split ("split")
+const jobs = [];
+const JOBS = ["image", "jpeg", "read", "split"];
 
 async function init() {
   postMessage({ type: "progress", text: "Starting Python…" });
@@ -33,9 +36,9 @@ function process() {
       if (job.type === "read") {
         postMessage({ type: "read", id: job.id, response: bridge.read(job.data) });
       } else {
-        const proxy = job.type === "image"
-          ? bridge.image(job.pixels, job.width, job.height)
-          : bridge.split(job.data, JSON.stringify(job.request));
+        const proxy = job.type === "image" ? bridge.image(job.pixels, job.width, job.height)
+          : job.type === "jpeg" ? bridge.jpeg(job.data)
+            : bridge.split(job.files, JSON.stringify(job.request));
         const data = proxy.toJs();
         proxy.destroy();
         postMessage({ type: job.type, id: job.id, data }, [data.buffer]);
@@ -70,7 +73,7 @@ function schedule() {
 
 self.onmessage = (event) => {
   if (event.data.type === "plan") latest = event.data;
-  else if (["image", "read", "split"].includes(event.data.type)) jobs.push(event.data);
+  else if (JOBS.includes(event.data.type)) jobs.push(event.data);
   else return;
   schedule();
 };

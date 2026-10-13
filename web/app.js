@@ -1,7 +1,8 @@
-// PDF Splitter web app: the settings, the file, the views of the original and
-// the split pages, downloading and printing. The PDF is split by pdfsplitter
-// (Python) in worker.js, and its pages are shown with pdf.js. A PNG image is
-// decoded by the browser and put in a PDF by pdfsplitter.
+// PDF Splitter web app: the settings, the files, the views of the original
+// and the split pages, downloading and printing. The PDFs are split by
+// pdfsplitter (Python) in worker.js, and their pages are shown with pdf.js.
+// An image is put in a PDF by pdfsplitter, as the pixels that the browser
+// decodes, or as it is if it is a JPEG image.
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -40,18 +41,19 @@ const state = {
   settings: loadSettings(),
   view: VIEWS.includes(loadJson(VIEW_KEY, DEFAULT_VIEW)) ? loadJson(VIEW_KEY, DEFAULT_VIEW) : DEFAULT_VIEW,
   linkScroll: true,
-  // {name, data, pages, views, title, annotations, task, images, failed} of
-  // the open PDF. Data is null while an image is put in a PDF. Pages are the
-  // sizes of the pages from pdfsplitter, views from pdf.js, which shows them
-  // before Python has read the PDF. Task loads the PDF in pdf.js. Images are
-  // the rendered pages.
-  file: null,
+  // The open files, whose pages follow one another, each {id, name, data,
+  // pages, views, title, annotations, task, images, failed}. Data is the
+  // PDF, null while an image is put in a PDF. Pages are the sizes of the
+  // pages from pdfsplitter, views from pdf.js, which shows them before
+  // Python has read the PDF. Task loads the PDF in pdf.js. Images are the
+  // rendered pages. The id also names the jobs of the file in the worker.
+  files: [],
+  fileId: 0,
   plan: null,
   // {key, data} of the last split PDF, for the settings in key
   output: null,
   ready: false,
   error: null,
-  readId: 0,
   planId: 0,
   splitId: 0,
   // {id, action, name, key, tab} of the split PDF that is being written,
@@ -136,25 +138,26 @@ worker.onmessage = ({ data }) => {
     $("#overlay-text").textContent = readingText();
     plan();
   } else if (data.type === "read") {
-    if (!state.file || data.id !== state.readId) return;
+    const file = fileById(data.id);
+    if (!file) return;
     const response = data.error ? { error: data.error } : JSON.parse(data.response);
     if (response.error) {
-      toast(`${state.file.name}: ${response.error}`);
-      closeFile();
+      failFile(file, response.error);
       return;
     }
-    Object.assign(state.file, response);
+    Object.assign(file, response);
     renderOriginal();
     plan();
-  } else if (data.type === "image") {
-    if (!state.file || data.id !== state.readId) return;
-    if (data.error) {
-      toast(`${state.file.name}: ${data.error}`);
-      closeFile();
-      return;
-    }
-    readPdf(state.file, data.data);
     render();
+  } else if (data.type === "image" || data.type === "jpeg") {
+    const file = fileById(data.id);
+    if (!file) return;
+    const { source } = file;
+    delete file.source;
+    // e.g., a JPEG image in CMYK, which the browser decodes instead
+    if (data.error && data.type === "jpeg") decodeFile(file, source);
+    else if (data.error) failFile(file, data.error);
+    else readPdf(file, data.data);
   } else if (data.type === "plan") {
     if (data.id !== state.planId) return; // a newer plan is on its way
     setBusy(false);
@@ -190,14 +193,36 @@ function schedule(delay = 30) {
   planTimer = setTimeout(plan, delay);
 }
 
+// The sizes of the pages of the files, or null until Python has read them
+function pageSizes() {
+  const { files } = state;
+  return files.length && files.every((file) => file.pages) ? files.flatMap((file) => file.pages) : null;
+}
+
+// The pages of the files, each {file, idx, size}, as far as they are known
+const sizesOf = (file) => file.pages || file.views;
+const allPages = () => state.files.flatMap((file) =>
+  sizesOf(file).map((size, idx) => ({ file, idx, size })));
+
+// The index of the first page of a file in all pages
+function firstPage(file) {
+  let first = 0;
+  for (const other of state.files) {
+    if (other === file) return first;
+    first += sizesOf(other).length;
+  }
+  return -1;
+}
+
 function plan() {
-  if (!state.file || !state.file.pages) return;
+  const pages = pageSizes();
+  if (!pages) return;
   state.planId += 1;
   if (!state.ready) return;
   setBusy(true);
   worker.postMessage({
     type: "plan", id: state.planId,
-    request: { pages: state.file.pages, options: state.settings },
+    request: { pages, options: state.settings },
   });
 }
 
@@ -256,49 +281,79 @@ $("#options").addEventListener("change", (event) => {
   }
 });
 
-/* The file: one PDF or PNG image at a time, a new one takes the place of
-   the open one */
+/* The files: PDFs and images, whose pages follow one another. New files
+   follow the open ones. */
 
 const isPdf = (bytes) => new TextDecoder("latin1").decode(bytes.subarray(0, 1024)).includes("%PDF-");
-const PNG_SIGNATURE = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
-const isPng = (bytes) => PNG_SIGNATURE.every((byte, idx) => bytes[idx] === byte);
+const isJpeg = (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+const fileById = (id) => state.files.find((file) => file.id === id);
+const isOpen = (file) => state.files.includes(file);
 
-async function openFile(file) {
-  const data = new Uint8Array(await file.arrayBuffer());
-  let image = null;
-  if (isPng(data)) {
-    try {
-      image = await decodeImage(file);
-    } catch (err) {
-      toast(`${file.name}: ${err instanceof RangeError ? err.message : "Could not read the image."}`);
-      return;
-    }
-  } else if (!isPdf(data)) {
-    toast(`${file.name} is not a PDF or a PNG image`);
+// Open files after the open ones, each batch in the order of their names,
+// e.g., page 2 before page 10
+async function addFiles(list) {
+  const sources = [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }));
+  if (!sources.length) return;
+  if (!state.files.length) resetScroll();
+  const files = sources.map((source) => ({
+    id: ++state.fileId, name: source.name, data: null, pages: null, views: [], images: [],
+  }));
+  state.files.push(...files);
+  render();
+  // one after another, so that only one image is decoded at a time
+  for (const [idx, file] of files.entries()) await loadFile(file, sources[idx]);
+}
+
+// A PDF is read as it is. A JPEG image is put in a PDF by Python as it is,
+// other images as the pixels that the browser decodes.
+async function loadFile(file, source) {
+  let data;
+  try {
+    data = new Uint8Array(await source.arrayBuffer());
+  } catch {
+    failFile(file, "Could not read the file.");
     return;
   }
-  closeFile();
-  state.file = { name: file.name, data: null, pages: null, views: [], images: [] };
-  if (image) {
-    state.readId += 1;
-    worker.postMessage({ type: "image", id: state.readId, ...image }, [image.pixels.buffer]);
+  if (!isOpen(file)) return;
+  if (isPdf(data)) {
+    readPdf(file, data);
+  } else if (isJpeg(data)) {
+    file.source = source;
+    worker.postMessage({ type: "jpeg", id: file.id, data });
   } else {
-    readPdf(state.file, data);
+    await decodeFile(file, source);
   }
-  resetScroll();
-  render();
+}
+
+async function decodeFile(file, source) {
+  let image;
+  try {
+    image = await decodeImage(source);
+  } catch (err) {
+    failFile(file, err instanceof RangeError ? err.message
+      : "It is not a PDF or an image that your browser can open.");
+    return;
+  }
+  if (isOpen(file)) worker.postMessage({ type: "image", id: file.id, ...image }, [image.pixels.buffer]);
 }
 
 // Read the PDF in Python, and show its pages with pdf.js
 function readPdf(file, data) {
   file.data = data;
-  state.readId += 1;
-  worker.postMessage({ type: "read", id: state.readId, data });
+  worker.postMessage({ type: "read", id: file.id, data });
   renderPages(file);
+  render();
+}
+
+function failFile(file, message) {
+  toast(`${file.name}: ${message}`);
+  removeFile(file);
 }
 
 function readingText() {
-  return state.file && !state.file.data ? "Reading the image…" : "Reading the PDF…";
+  const { files } = state;
+  if (files.length > 1) return "Reading the files…";
+  return files.length && !files[0].data ? "Reading the image…" : "Reading the PDF…";
 }
 
 // Decode an image into RGB pixels, on white like the paper
@@ -333,47 +388,66 @@ async function decodeImage(blob) {
   }
 }
 
-function closeFile() {
-  const { file } = state;
-  if (!file) return;
-  state.file = null;
+// Free pdf.js and the rendered pages of a file
+function freeFile(file) {
+  if (file.task) file.task.destroy().catch(() => {});
+  for (const url of file.images) if (url) URL.revokeObjectURL(url);
+}
+
+function removeFile(file) {
+  if (!isOpen(file)) return;
+  state.files = state.files.filter((other) => other !== file);
+  freeFile(file);
+  filesChanged();
+}
+
+function closeAll() {
+  const { files } = state;
+  state.files = [];
+  for (const file of files) freeFile(file);
+  filesChanged();
+}
+
+// The pages change with the files: the plan of the files before is dropped,
+// and the split pages of it are shown until the new plan
+function filesChanged() {
+  state.planId += 1;
   state.plan = null;
   state.error = null;
   state.output = null;
   state.pending = null;
-  $("#original").innerHTML = "";
-  $("#result").innerHTML = "";
-  render();
-  // free pdf.js and the rendered pages
-  if (file.task) file.task.destroy().catch(() => {});
-  for (const url of file.images) if (url) URL.revokeObjectURL(url);
   removePrintFrame();
+  if (!state.files.length) $("#result").innerHTML = "";
+  renderOriginal();
+  plan();
+  render();
 }
 
 $("#pick").addEventListener("change", async (event) => {
-  const [file] = event.target.files;
+  const files = [...event.target.files];
   event.target.value = "";
-  if (file) await openFile(file);
+  await addFiles(files);
 });
 document.addEventListener("click", (event) => {
   if (event.target.closest("[data-pick]")) $("#pick").click();
 });
+$("#close-all").addEventListener("click", closeAll);
 
 $("#example").addEventListener("click", async () => {
   try {
     const response = await fetch("examples/example.pdf");
     if (!response.ok) throw new Error(response.status);
-    await openFile(new File([await response.blob()], "example.pdf", { type: "application/pdf" }));
+    await addFiles([new File([await response.blob()], "example.pdf", { type: "application/pdf" })]);
   } catch {
     toast("Could not load the example");
   }
 });
 
 document.addEventListener("paste", async (event) => {
-  const [file] = event.clipboardData ? event.clipboardData.files : [];
-  if (file) {
+  const files = event.clipboardData ? [...event.clipboardData.files] : [];
+  if (files.length) {
     event.preventDefault();
-    await openFile(file);
+    await addFiles(files);
   }
 });
 
@@ -394,8 +468,47 @@ window.addEventListener("drop", async (event) => {
   event.preventDefault();
   dragDepth = 0;
   document.body.classList.remove("dragging");
-  const [file] = event.dataTransfer.files;
-  if (file) await openFile(file);
+  await addFiles(event.dataTransfer.files);
+});
+
+// The order of the files changes by dragging their chips
+let dragged = null;
+$("#files").addEventListener("dragstart", (event) => {
+  dragged = event.target.closest(".chip");
+  if (!dragged) return;
+  event.dataTransfer.effectAllowed = "move";
+  // Firefox drags only with data
+  event.dataTransfer.setData("text/plain", dragged.title);
+  dragged.classList.add("dragging");
+});
+$("#files").addEventListener("dragover", (event) => {
+  if (!dragged) return;
+  event.preventDefault();
+  const chip = event.target.closest(".chip");
+  if (!chip || chip === dragged) return;
+  const { left, width } = chip.getBoundingClientRect();
+  if (event.clientX > left + width / 2) chip.after(dragged);
+  else chip.before(dragged);
+});
+$("#files").addEventListener("dragend", () => {
+  if (!dragged) return;
+  dragged.classList.remove("dragging");
+  dragged = null;
+  const order = $$(".chip", $("#files")).map((chip) => Number(chip.dataset.id));
+  if (order.join() === state.files.map((file) => file.id).join()) return;
+  state.files.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  filesChanged();
+});
+// The chips of many files scroll sideways, also with the wheel
+$("#files").addEventListener("wheel", (event) => {
+  const el = $("#files");
+  if (el.scrollWidth <= el.clientWidth || Math.abs(event.deltaX) >= Math.abs(event.deltaY)) return;
+  event.preventDefault();
+  el.scrollLeft += event.deltaY;
+}, { passive: false });
+$("#files").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-close]");
+  if (button) removeFile(fileById(Number(button.dataset.close)));
 });
 
 /* Showing the pages with pdf.js */
@@ -417,7 +530,7 @@ async function loadPdfjs() {
 async function renderPages(file) {
   try {
     const module = await loadPdfjs();
-    if (state.file !== file) return;
+    if (!isOpen(file)) return;
     const base = new URL("./pdfjs/", import.meta.url).href;
     file.task = module.getDocument({
       data: file.data.slice(), // pdf.js takes the buffer to its worker
@@ -429,12 +542,14 @@ async function renderPages(file) {
     });
     const doc = await file.task.promise;
     const pages = [];
+    const views = [];
     for (let idx = 0; idx < doc.numPages; idx++) {
       pages.push(await doc.getPage(idx + 1));
       const { width, height } = pages[idx].getViewport({ scale: 1 });
-      file.views[idx] = [width, height];
+      views.push([width, height]);
     }
-    if (state.file !== file) return;
+    if (!isOpen(file)) return;
+    file.views = views;
     // show the pages before Python has read the PDF
     if (!file.pages) renderOriginal();
     for (const [idx, page] of pages.entries()) {
@@ -451,42 +566,43 @@ async function renderPages(file) {
       }).promise;
       page.cleanup();
       const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
-      if (state.file !== file) return;
+      if (!isOpen(file)) return;
       file.images[idx] = URL.createObjectURL(blob);
-      showImage(idx);
+      showImage(file, idx);
     }
   } catch (err) {
     // closing the file stops pdf.js
-    if (state.file !== file) return;
+    if (!isOpen(file)) return;
     file.failed = true;
-    toast(`Could not show the pages: ${err && err.message || err}`);
-    for (const el of $$(".paper.loading")) el.classList.replace("loading", "failed");
+    toast(`Could not show the pages of ${file.name}: ${err && err.message || err}`);
+    renderOriginal();
   }
 }
 
-function showImage(idx) {
-  const url = state.file.images[idx];
-  for (const img of $$(`[data-page="${idx}"] img`)) {
+function showImage(file, idx) {
+  const page = firstPage(file) + idx;
+  const url = file.images[idx];
+  for (const img of $$(`[data-page="${page}"] img`)) {
     img.src = url;
     img.hidden = false;
   }
-  for (const el of $$(`.paper[data-page="${idx}"]`)) el.classList.remove("loading");
+  for (const el of $$(`.paper[data-page="${page}"]`)) el.classList.remove("loading");
 }
 
 /* Rendering */
 
-// The original pages, without the slices, which follow the plan
+// The original pages, without the slices, which follow the plan. Several
+// files each start with their name.
 function renderOriginal() {
-  const { file } = state;
-  const sizes = file && (file.pages || (file.views.length ? file.views : null));
-  if (!sizes) return;
-  $("#original").innerHTML = sizes.map(([width, height], idx) => `
-    <div class="orig" data-orig="${idx}">
-      <div class="page-label">Page ${idx + 1}<span></span></div>
+  const several = state.files.length > 1;
+  $("#original").innerHTML = allPages().map(({ file, idx, size: [width, height] }, page) => `
+    ${several && idx === 0 ? `<div class="file-label" title="${escapeHtml(file.name)}">${FILE_ICON}<span>${escapeHtml(file.name)}</span></div>` : ""}
+    <div class="orig" data-orig="${page}">
+      <div class="page-label">Page ${page + 1}<span></span></div>
       <div class="orig-row">
         <div class="brackets"></div>
-        <div class="paper ${file.images[idx] ? "" : file.failed ? "failed" : "loading"}" data-page="${idx}" style="aspect-ratio: ${width} / ${height}">
-          <img alt="Page ${idx + 1}" ${file.images[idx] ? `src="${file.images[idx]}"` : "hidden"}>
+        <div class="paper ${file.images[idx] ? "" : file.failed ? "failed" : "loading"}" data-page="${page}" style="aspect-ratio: ${width} / ${height}">
+          <img alt="Page ${page + 1}" ${file.images[idx] ? `src="${file.images[idx]}"` : "hidden"}>
           <div class="slice-hl"></div>
         </div>
       </div>
@@ -507,17 +623,16 @@ function sheetsOf(plan) {
 }
 
 // The scale of a page as wide as the paper within the margins
-const fullScale = (plan, idx) => (plan.paper[0] - 2 * plan.margin) / state.file.pages[idx][0];
+const fullScale = (plan, width) => (plan.paper[0] - 2 * plan.margin) / width;
 
-function renderSlices(plan) {
-  const { file } = state;
+function renderSlices(plan, pages) {
   let out = 0;
   plan.pages.forEach((page, idx) => {
     const orig = $(`[data-orig="${idx}"]`);
     if (!orig) return;
-    const height = file.pages[idx][1];
+    const [width, height] = pages[idx];
     const count = page.slices.length;
-    const shrunk = Math.round((1 - page.scale / fullScale(plan, idx)) * 100);
+    const shrunk = Math.round((1 - page.scale / fullScale(plan, width)) * 100);
     $(".page-label span", orig).textContent = (count > 1 ? `· split onto ${count} pages` : "· fits on one page")
       + (shrunk > 0 ? `, ${shrunk}% smaller` : "");
     $(".brackets", orig).innerHTML = page.slices.map(([top, bottom], part) => `
@@ -541,7 +656,7 @@ function renderSlices(plan) {
 }
 
 function renderSheets(plan, sheets) {
-  const { file } = state;
+  const pages = allPages();
   const [paperWidth, paperHeight] = plan.paper;
   const { margin, overlap } = plan;
   const contentWidth = paperWidth - 2 * margin;
@@ -550,8 +665,8 @@ function renderSheets(plan, sheets) {
     width: ${percent(contentWidth / paperWidth)}; height: ${percent(contentHeight / paperHeight)}`;
   const band = percent(Math.min(1, overlap / contentHeight));
   $("#result").innerHTML = sheets.map(({ page, part, count, top, scale, left }, out) => {
-    const url = file.images[page];
-    const [width, height] = file.pages[page];
+    const { file, idx, size: [width, height] } = pages[page];
+    const url = file.images[idx];
     // a page that is shrunk is narrower than the paper, in its middle
     const place = `left: ${percent(left / contentWidth)}; width: ${percent(width * scale / contentWidth)};
       transform: translateY(-${percent(top / height)})`;
@@ -572,20 +687,24 @@ function renderSheets(plan, sheets) {
 }
 
 function render() {
-  const { file, plan } = state;
-  document.body.classList.toggle("has-files", Boolean(file));
+  const { plan } = state;
+  const open = state.files.length > 0;
+  document.body.classList.toggle("has-files", open);
+  document.body.classList.toggle("several-files", state.files.length > 1);
   renderFiles();
   const overlay = $("#overlay");
-  const waiting = file && !plan && !state.error;
-  overlay.classList.toggle("show", Boolean(waiting || (file && state.error)));
+  // the split pages of the files before stay until the new plan
+  const waiting = open && !plan && !state.error && !$("#result").childElementCount;
+  overlay.classList.toggle("show", Boolean(waiting || (open && state.error)));
   overlay.classList.toggle("error", Boolean(state.error));
   if (state.error) $("#overlay-text").textContent = state.error;
   else if (waiting && state.ready) $("#overlay-text").textContent = readingText();
-  const ready = Boolean(file && plan && state.ready);
+  const ready = Boolean(open && plan && state.ready);
   $("#download").disabled = !ready;
   $("#print").disabled = !ready;
-  if (file && plan && plan.pages.length === (file.pages || []).length) {
-    renderSlices(plan);
+  const pages = pageSizes();
+  if (plan && pages && plan.pages.length === pages.length) {
+    renderSlices(plan, pages);
     renderSheets(plan, sheetsOf(plan));
     // keep the split pages at the part of the original that is shown
     if (linked()) align(panes.original, panes.result);
@@ -596,26 +715,24 @@ function render() {
 
 const FILE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`;
 
+// A chip for each file, which is dragged to change the order of several
 function renderFiles() {
-  const el = $("#files");
-  const { file } = state;
-  if (!file) {
-    el.innerHTML = "";
-    return;
-  }
-  const pages = file.pages ? ` · ${plural(file.pages.length, "page")}` : "";
-  el.innerHTML = `
-    <span class="chip" title="${escapeHtml(file.name)}">
-      ${FILE_ICON}<span class="name">${escapeHtml(file.name)}</span><span class="count">${pages}</span>
-      <button class="chip-close" aria-label="Close ${escapeHtml(file.name)}" title="Close">×</button>
-    </span>`;
-  $(".chip-close", el).addEventListener("click", closeFile);
+  if (dragged) return;
+  const several = state.files.length > 1;
+  $("#files").innerHTML = state.files.map(({ id, name, pages }) => `
+    <span class="chip ${pages ? "" : "reading"}" data-id="${id}" draggable="${several}"
+          title="${escapeHtml(name)}${several ? "\nDrag to change the order" : ""}">
+      ${FILE_ICON}<span class="name">${escapeHtml(name)}</span><span class="count">${pages ? ` · ${plural(pages.length, "page")}` : " · reading…"}</span>
+      <button class="chip-close" data-close="${id}" aria-label="Close ${escapeHtml(name)}" title="Close">×</button>
+    </span>`).join("");
 }
 
 function renderMeta() {
-  const { file, plan } = state;
-  $("#original-meta").textContent = file && file.pages
-    ? `${file.name} · ${plural(file.pages.length, "page")}` : file ? file.name : "";
+  const { files, plan } = state;
+  const pages = allPages().length;
+  $("#original-meta").textContent = files.length > 1
+    ? `${plural(files.length, "file")} · ${plural(pages, "page")}`
+    : files.length ? files[0].name + (pages ? ` · ${plural(pages, "page")}` : "") : "";
   $("#result-meta").textContent = plan
     ? `${PAPERS[state.settings.paper].label} · ${plural(sheetsOf(plan).length, "page")}` : "";
 }
@@ -624,10 +741,10 @@ const ICON_WARN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 
 const ICON_INFO = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><path d="M12 7h.01"/></svg>`;
 
 function renderStatus() {
-  const { file, plan } = state;
+  const { plan } = state;
   const counts = $("#status-counts");
   const messages = [];
-  if (file && plan) {
+  if (plan) {
     const split = plan.pages.filter((page) => page.slices.length > 1).length;
     const out = sheetsOf(plan).length;
     counts.innerHTML = `<strong>${split}</strong> of ${plural(plan.pages.length, "page")} split · `
@@ -640,8 +757,9 @@ function renderStatus() {
   } else {
     counts.textContent = "";
   }
-  if (file && file.annotations) {
-    messages.push(["warning", `${plural(file.annotations, "annotation")}, e.g., comments or links, ${file.annotations === 1 ? "is" : "are"} not in the split PDF.`]);
+  const annotations = state.files.reduce((sum, file) => sum + (file.annotations || 0), 0);
+  if (annotations) {
+    messages.push(["warning", `${plural(annotations, "annotation")}, e.g., comments or links, ${annotations === 1 ? "is" : "are"} not in the split PDF.`]);
   }
   if (state.error) messages.unshift(["error", state.error]);
   $("#status-messages").innerHTML = messages.map(([kind, text]) =>
@@ -694,13 +812,14 @@ $("#views").addEventListener("change", (event) => {
 
 function highlight(out, on) {
   for (const el of $$(`[data-out="${out}"]`)) el.classList.toggle("hl", on);
-  const { plan, file } = state;
-  if (!plan || !file) return;
+  const { plan } = state;
+  const pages = pageSizes();
+  if (!plan || !pages) return;
   const sheet = sheetsOf(plan)[out];
   if (!sheet) return;
   const hl = $(`[data-orig="${sheet.page}"] .slice-hl`);
   if (!hl) return;
-  const height = file.pages[sheet.page][1];
+  const height = pages[sheet.page][1];
   hl.style.top = percent(sheet.top / height);
   hl.style.height = percent((Math.min(sheet.bottom, height) - sheet.top) / height);
   hl.classList.toggle("show", on);
@@ -741,7 +860,7 @@ $("#result").addEventListener("click", (event) => {
   const sheet = sheetsOf(state.plan)[Number(wrap.dataset.out)];
   const paper = $(`[data-orig="${sheet.page}"] .paper`);
   if (!paper) return;
-  const height = state.file.pages[sheet.page][1];
+  const height = pageSizes()[sheet.page][1];
   scrollWithin($("#original"), paper, paper.offsetHeight * sheet.top / height);
 });
 
@@ -780,9 +899,10 @@ const topIn = (pane, el) => el.getBoundingClientRect().top - pane.el.getBounding
 // the overlap at the top of the next page, so that neither pane leaps.
 function linkMap(from) {
   if (from.link) return from.link;
-  const { file, plan } = state;
+  const { plan } = state;
+  const pages = pageSizes();
   const points = [[0, 0]];
-  if (file && plan && file.pages && plan.pages.length === file.pages.length) {
+  if (plan && pages && plan.pages.length === pages.length) {
     const contentWidth = plan.paper[0] - 2 * plan.margin;
     let out = 0;
     plan.pages.forEach((page, idx) => {
@@ -791,7 +911,7 @@ function linkMap(from) {
         $(`.sheet-wrap[data-out="${out + part}"] .sheet-content`, panes.result.el));
       out += page.slices.length;
       if (!paper || contents.some((el) => !el)) return;
-      const height = file.pages[idx][1];
+      const height = pages[idx][1];
       const paperTop = topIn(panes.original, paper);
       const original = (y) => paperTop + paper.offsetHeight * Math.min(y, height) / height;
       const sheets = contents.map((el, part) => {
@@ -840,7 +960,7 @@ function linkLine(pane) {
 
 // Scroll the other pane to what a pane shows
 function align(from, to) {
-  if (!state.file || !state.plan) return;
+  if (!state.plan) return;
   const line = linkLine(from);
   const at = mapLink(linkMap(from), from.el.scrollTop + line * from.el.clientHeight);
   const max = to.el.scrollHeight - to.el.clientHeight;
@@ -893,16 +1013,18 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-// notes.pdf, or notes.png, is saved as notes-a4.pdf
-const splitName = (name, paper) => `${name.replace(/\.(pdf|png)$/i, "")}-${paper}.pdf`;
-// The split PDF is written again only when the settings change
-const outputKey = () => JSON.stringify(state.settings);
+// notes.pdf, or notes.png, is saved as notes-a4.pdf, and with other files
+// after it as notes-combined-a4.pdf
+const splitName = (files, paper) =>
+  `${files[0].name.replace(/\.[a-z0-9]{1,5}$/i, "")}${files.length > 1 ? "-combined" : ""}-${paper}.pdf`;
+// The split PDF is written again only when the settings or the files change
+const outputKey = () => JSON.stringify([state.settings, state.files.map((file) => file.id)]);
 
 // Write the split PDF, or use the last one, and download or print it
 function split(action) {
-  const { file, plan } = state;
-  if (!file || !plan || !state.ready) return;
-  const name = splitName(file.name, state.settings.paper);
+  const { files, plan } = state;
+  if (!files.length || !plan || !state.ready) return;
+  const name = splitName(files, state.settings.paper);
   if (state.output && state.output.key === outputKey()) {
     deliver(action, state.output.data, name);
     return;
@@ -915,7 +1037,7 @@ function split(action) {
   };
   toast(action === "print" ? `Writing ${name} to print it…` : `Writing ${name}…`);
   worker.postMessage({
-    type: "split", id: state.splitId, data: file.data,
+    type: "split", id: state.splitId, files: files.map((file) => file.data),
     request: { options: state.settings },
   });
 }
@@ -986,7 +1108,7 @@ function printBlob(blob, tab) {
 $("#download").addEventListener("click", () => split("download"));
 $("#print").addEventListener("click", () => split("print"));
 document.addEventListener("keydown", (event) => {
-  if (!(event.ctrlKey || event.metaKey) || !state.file) return;
+  if (!(event.ctrlKey || event.metaKey) || !state.files.length) return;
   if (event.key === "s" || event.key === "p") {
     event.preventDefault();
     split(event.key === "s" ? "download" : "print");

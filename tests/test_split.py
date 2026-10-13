@@ -1,4 +1,5 @@
 import io
+from pathlib import Path
 
 import pytest
 from pypdf import PdfReader, PdfWriter
@@ -171,6 +172,20 @@ def test_cli(tmp_path, tall_pdf, capsys):
         main([str(source), "--overlap", "200"])
     with pytest.raises(SystemExit):
         main([str(source), "-o", str(source)])
+
+
+def test_cli_combine(tmp_path, tall_pdf, capsys):
+    source = tmp_path / "notes.pdf"
+    source.write_bytes(tall_pdf)
+    photo = tmp_path / "photo.jpg"
+    photo.write_bytes((Path(__file__).parent / "data" / "corner.jpg").read_bytes())
+    main([str(source), str(photo), "--shrink", "0"])
+    assert len(PdfReader(str(tmp_path / "notes-a4.pdf")).pages) == 1 + 3 + 1
+    assert "with 5 pages from 3 pages, of which 1 split" in capsys.readouterr().err
+    (tmp_path / "broken.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+    with pytest.raises(SystemExit):
+        main([str(source), str(tmp_path / "broken.png")])
+    assert "broken.png" in capsys.readouterr().err
 
 
 # Render the original and the new PDF, and compare each slice with the part of

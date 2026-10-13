@@ -54,7 +54,7 @@ def test_plan_error():
 
 
 def test_split(tall_pdf):
-    data = web.split(tall_pdf, json.dumps({"options": {"paper": "letter"}}))
+    data = web.split([tall_pdf], json.dumps({"options": {"paper": "letter"}}))
     reader = PdfReader(io.BytesIO(data))
     # a page of a reMarkable is a bit too high for Letter, and shrunk
     assert len(reader.pages) == 4

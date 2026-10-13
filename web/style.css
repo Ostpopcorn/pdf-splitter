@@ -171,7 +171,12 @@ h1, h2, h3 { margin: 0; }
   white-space: nowrap;
   min-width: 0;
 }
-.chip .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.files .chip { flex: none; }
+.chip .name { min-width: 0; max-width: 20ch; overflow: hidden; text-overflow: ellipsis; }
+.chip[draggable="true"] { cursor: grab; }
+.chip.dragging { opacity: .45; }
+.chip.reading .count { animation: pulse 1.2s ease-in-out infinite alternate; }
+@keyframes pulse { to { opacity: .35; } }
 .chip svg { width: 14px; height: 14px; }
 .chip .count { color: var(--muted); font-weight: 400; }
 .chip .chip-close {
@@ -188,6 +193,12 @@ h1, h2, h3 { margin: 0; }
   cursor: pointer;
 }
 .chip .chip-close:hover { background: var(--surface-3); color: var(--text); }
+.sources .btn { flex: none; height: 28px; padding: 0 9px; font-size: 12.5px; }
+.sources .btn svg { width: 14px; height: 14px; }
+body:not(.has-files) .sources .btn, body:not(.several-files) #close-all { display: none; }
+/* Several files have a row of their own */
+body.several-files .topbar { flex-wrap: wrap; row-gap: 8px; }
+body.several-files .sources { order: 3; flex: 1 1 100%; }
 
 /* The views: the original, both side by side, or the split pages */
 .views { align-self: center; }
@@ -353,6 +364,23 @@ body.view-original .gutter, body.view-split .gutter { display: none; }
 }
 .page-label span, .sheet-label span { font-weight: 400; color: var(--muted); }
 .orig-row { display: flex; }
+/* The name of each of several files, above its first page */
+.file-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 454px;
+  margin: 8px auto 10px;
+  padding: 0 0 6px 34px;
+  border-bottom: 1px solid var(--border);
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--accent);
+}
+.file-label:first-child { margin-top: 0; }
+.file-label svg { flex: none; width: 14px; height: 14px; }
+.file-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.view-original .file-label { flex: 0 0 100%; max-width: none; margin: 8px 0 -8px; padding-left: 0; }
 .brackets { position: relative; flex: none; width: 34px; }
 .bracket {
   position: absolute;
@@ -518,6 +546,7 @@ body.dragging .drop-card { border-color: var(--accent); background: var(--accent
 .drop-card h1 { font-size: 20px; font-weight: 650; letter-spacing: -.01em; }
 .drop-card > p { margin: 8px auto 0; color: var(--muted); max-width: 420px; }
 .drop-actions { display: flex; justify-content: center; gap: 10px; margin-top: 22px; }
+.drop-card > p.formats { margin-top: 16px; font-size: 12.5px; }
 .privacy { display: inline-flex; align-items: center; gap: 6px; margin-top: 22px !important; font-size: 12px; }
 .privacy svg { width: 14px; height: 14px; }
 

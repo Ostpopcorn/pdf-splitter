@@ -4,9 +4,9 @@ it, and PDFs and the pixels of images as bytes."""
 import json
 from dataclasses import asdict, fields
 
-from .image import image_pdf
+from .image import image_pdf, jpeg_pdf
 from .split import (MM, PAPERS, Options, count_annotations, layout_page,
-                    max_overlap, page_sizes, paper_size, read_pdf, split_pdf)
+                    max_overlap, page_sizes, paper_size, read_pdf, split_pdfs)
 
 _OPTIONS = {_field.name: _field.type for _field in fields(Options)}
 
@@ -58,6 +58,12 @@ def image(pixels, width, height):
     return image_pdf(_bytes(pixels), int(width), int(height))
 
 
+def jpeg(data):
+    """Return a PDF (bytes) with one page that shows a JPEG image as it is,
+    or raise ValueError, e.g., for CMYK, so that the browser decodes it."""
+    return jpeg_pdf(_bytes(data))
+
+
 def plan(request_json):
     """Return the paper and the layout of the pages of a request, each page
     with its width and height in points, or an error. The slices are in
@@ -82,6 +88,8 @@ def plan(request_json):
     })
 
 
-def split(data, request_json):
-    """Return the new PDF (bytes) of a PDF and the options of a request."""
-    return split_pdf(_bytes(data), _options(json.loads(request_json))).data
+def split(files, request_json):
+    """Return the new PDF (bytes) of PDFs, one after another, and the options
+    of a request."""
+    return split_pdfs([_bytes(_file) for _file in files],
+                      _options(json.loads(request_json))).data

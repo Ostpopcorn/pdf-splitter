@@ -13,7 +13,7 @@ number of slices.
 import io
 import math
 from dataclasses import dataclass, field
-from typing import List, Optional, Tuple
+from typing import List, Optional, Sequence, Tuple, Union
 
 from pypdf import PdfReader, PdfWriter
 from pypdf.generic import (DecodedStreamObject, DictionaryObject, NameObject,
@@ -235,11 +235,19 @@ def read_pdf(data):
 def split_pdf(data, options=Options(), reader: Optional[PdfReader] = None):
     """Split the pages of a PDF (bytes) onto pages of paper and return the
     new PDF and the layout of each page."""
-    reader = reader or read_pdf(data)
+    return split_pdfs([reader or data], options)
+
+
+def split_pdfs(pdfs: Sequence[Union[bytes, PdfReader]], options=Options()):
+    """Split the pages of PDFs, each bytes or a reader, one after another
+    onto pages of paper and return the new PDF, with the title of the first
+    PDF, and the layout of each page."""
+    readers = [_pdf if isinstance(_pdf, PdfReader) else read_pdf(_pdf)
+               for _pdf in pdfs]
     paper_width, paper_height = paper_size(options)
     writer = PdfWriter()
     layouts = []
-    for _page in reader.pages:
+    for _page in (_page for _reader in readers for _page in _reader.pages):
         box, rotation = _page_box(_page)
         layout = layout_page(*_shown_size(box, rotation), options)
         layouts.append(layout)
@@ -252,7 +260,8 @@ def split_pdf(data, options=Options(), reader: Optional[PdfReader] = None):
             content = DecodedStreamObject()
             content.set_data(_slice_content(layout, _top, box, rotation, options))
             paper.replace_contents(content)
-    title = reader.metadata.title if reader.metadata else None
+    title = (readers[0].metadata.title
+             if readers and readers[0].metadata else None)
     if title:
         writer.add_metadata({"/Title": title})
     out = io.BytesIO()

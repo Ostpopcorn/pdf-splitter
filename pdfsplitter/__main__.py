@@ -1,22 +1,26 @@
-"""Split the tall pages of a PDF onto pages of paper with an overlap.
+"""Split the tall pages of PDFs onto pages of paper with an overlap.
 
     python -m pdfsplitter notes.pdf                 # writes notes-a4.pdf
     python -m pdfsplitter notes.pdf --overlap 30 --paper letter -o out.pdf
+    python -m pdfsplitter notes.pdf photo.jpg -o all.pdf  # combines them
 """
 import argparse
 import os
 import sys
 
-from .split import PAPERS, Options, count_annotations, read_pdf, split_pdf
+from .image import jpeg_pdf
+from .split import PAPERS, Options, count_annotations, read_pdf, split_pdfs
 
 
 def main(argv=None):
     defaults = Options()
     parser = argparse.ArgumentParser(
         prog="pdf-splitter", description=__doc__.splitlines()[0])
-    parser.add_argument("input", help="The PDF to split")
-    parser.add_argument("-o", "--output",
-                        help="The new PDF (default: INPUT-PAPER.pdf)")
+    parser.add_argument("inputs", nargs="+", metavar="input",
+                        help="A PDF or a JPEG image to split. The pages of "
+                        "several are combined, one after another.")
+    parser.add_argument("-o", "--output", help="The new PDF (default: "
+                        "INPUT-PAPER.pdf, after the first input)")
     parser.add_argument("--paper", default=defaults.paper, choices=PAPERS,
                         type=str.lower,
                         help="The size of the paper (default: %(default)s)")
@@ -32,15 +36,24 @@ def main(argv=None):
                         "that is a bit too long (default: %(default)g %%)")
     args = parser.parse_args(argv)
     output = args.output or "{}-{}.pdf".format(
-        os.path.splitext(args.input)[0], args.paper)
-    if os.path.abspath(output) == os.path.abspath(args.input):
-        parser.error("The output would overwrite the input")
-    with open(args.input, "rb") as _file:
-        data = _file.read()
+        os.path.splitext(args.inputs[0])[0], args.paper)
+    if any(os.path.abspath(output) == os.path.abspath(_input)
+           for _input in args.inputs):
+        parser.error("The output would overwrite an input")
+    readers = []
+    for _input in args.inputs:
+        with open(_input, "rb") as _file:
+            data = _file.read()
+        try:
+            if data[:3] == b"\xff\xd8\xff":  # a JPEG image
+                data = jpeg_pdf(data)
+            readers.append(read_pdf(data))
+        except Exception as err:  # pylint: disable=broad-except
+            parser.exit(1, "{}: error: {}: {}\n".format(parser.prog, _input,
+                                                        err))
     try:
-        reader = read_pdf(data)
-        result = split_pdf(data, Options(args.paper, args.overlap, args.margin,
-                                         args.shrink), reader)
+        result = split_pdfs(readers, Options(args.paper, args.overlap,
+                                             args.margin, args.shrink))
     except ValueError as err:
         parser.exit(1, "{}: error: {}\n".format(parser.prog, err))
     with open(output, "wb") as _file:
@@ -48,7 +61,7 @@ def main(argv=None):
     split = sum(len(_layout.slices) > 1 for _layout in result.layouts)
     print("Wrote {} with {} pages from {} pages, of which {} split".format(
         output, result.pages, len(result.layouts), split), file=sys.stderr)
-    annotations = count_annotations(reader)
+    annotations = sum(map(count_annotations, readers))
     if annotations:
         print("{} annotations, e.g., comments, are not in the split PDF"
               .format(annotations), file=sys.stderr)
