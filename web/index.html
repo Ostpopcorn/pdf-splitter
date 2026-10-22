@@ -84,11 +84,15 @@
           <input type="range" id="margin" data-setting="margin" min="0" max="25" step="1" aria-label="Margin in mm">
           <span class="number"><input type="number" id="margin-number" data-setting="margin" min="0" max="25" step="1"><span>mm</span></span>
         </div>
+        <label class="check" title="Make each page the paper within the margins, without them, so that your printer places it on the paper">
+          <input type="checkbox" id="crop" data-setting="crop">
+          <span>Leave out the margins</span>
+        </label>
       </div>
       <div class="field">
         <div class="field-head">
           <h3 id="size-label">Size</h3>
-          <p data-split="Up to this much smaller to save a page" data-poster="Exactly this much of the original. Print at actual size."></p>
+          <p data-split="As wide as the paper, or up to 10% smaller if that saves a page" data-poster="Exactly this much of the original. Print at actual size."></p>
         </div>
         <div class="size-row">
           <div class="segmented" id="mode" role="radiogroup" aria-labelledby="size-label">
@@ -98,10 +102,6 @@
             <label title="Print each page at a scale, on rows and columns of pages to cut and glue together">
               <input type="radio" name="mode" value="poster"><span>Poster</span>
             </label>
-          </div>
-          <div class="range for-split">
-            <input type="range" id="shrink" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent">
-            <span class="number"><input type="number" id="shrink-number" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent"><span>%</span></span>
           </div>
           <div class="range for-poster">
             <input type="range" id="scale" data-setting="scale" min="10" max="400" step="1" aria-label="Scale in percent">

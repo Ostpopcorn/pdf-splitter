@@ -57,7 +57,11 @@ class Options:
     on as many rows and columns of pages of paper as it needs. Its paper is
     turned if it then needs fewer pages. It starts at the top left of its
     pages, or is in their middle if it is centered, so that the paper that
-    it leaves empty is on all sides."""
+    it leaves empty is on all sides.
+
+    The pages of the new PDF are cropped to the margins, i.e., they are the
+    paper within the margins, without them, so that the printer places them
+    on the paper, e.g., in its middle."""
     paper: str = "a4"
     overlap: float = 20
     margin: float = 0
@@ -66,6 +70,7 @@ class Options:
     poster: bool = False
     scale: float = 100
     center: bool = False
+    crop: bool = False
 
 
 @dataclass(frozen=True)
@@ -119,6 +124,17 @@ def paper_size(options):
         raise ValueError("Unknown paper {!r}, choose one of {}".format(
             options.paper, ", ".join(PAPERS))) from None
     return width * MM, height * MM
+
+
+def sheet_size(options):
+    """Return the width and the height of the pages of the new PDF, upright,
+    and their margin, in points: the paper and its margin, or the paper
+    within the margins and none if the pages are cropped."""
+    width, height = paper_size(options)
+    margin = options.margin * MM
+    if options.crop:
+        return width - 2 * margin, height - 2 * margin, 0.0
+    return width, height, margin
 
 
 def max_overlap(options):
@@ -185,7 +201,7 @@ def _layout(width, height, options, turned):
             scale, count = fit, count - 1
         columns = 1
         left = (content_width - width * scale) / 2
-    paper = paper_size(options)
+    paper = sheet_size(options)[:2]
     return Layout(width, height, scale,
                   [((_i * step_y - top) / scale,
                     (_i * step_y - top + content_height) / scale)
@@ -289,7 +305,7 @@ def _slice_content(layout, top, left, box, rotation, options):
     """The content stream of a page of paper that shows a slice of a column
     of a page, which start at top and left."""
     paper_width, paper_height = layout.paper
-    margin = options.margin * MM
+    margin = sheet_size(options)[2]
     scale = layout.scale
     clip = (margin, margin, paper_width - 2 * margin, paper_height - 2 * margin)
     # the top left of the slice at the top left of the paper within the

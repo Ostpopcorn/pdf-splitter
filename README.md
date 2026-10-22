@@ -24,10 +24,12 @@ your files never leave your computer.
   one, 20 mm by default.  Make it higher than a line of your handwriting.
   It is marked on the original, and on the pages of paper.
 * The _margin_ is for a printer that does not print to the edge of the
-  paper.
-* A page is made up to 10 % smaller (the _shrink_) if it then needs fewer
-  pages, e.g., a page of a reMarkable, which is a bit too long for Letter, or
-  a long page whose last bit would be almost alone on a page.
+  paper.  Check _Leave out the margins_ to make each page the paper within
+  the margins, without them, e.g., 190 × 277 mm for A4 with margins of 10
+  mm, so that your printer places it on the paper.
+* A page is made up to 10 % smaller if it then needs fewer pages, e.g., a
+  page of a reMarkable, which is a bit too long for Letter, or a long page
+  whose last bit would be almost alone on a page.
 * A wide page goes on landscape paper if it then needs fewer pages, or is
   larger on as many, e.g., a landscape page of a reMarkable, which is 133 %
   instead of 100 %.  Most print dialogs turn landscape pages on their own;
@@ -88,8 +90,8 @@ pdf-splitter notes.pdf --overlap 30 --margin 5 --paper letter -o print.pdf
 ```
 Use `--shrink 0` to scale every page to the width of the paper,
 `--poster 100 --margin 5` for posters at their actual size, `--center` to put
-them in the middle of their pages, and `--no-turn` to keep the paper
-upright.  The pages of several inputs are combined, e.g.,
+them in the middle of their pages, `--crop` to leave out the margins, and
+`--no-turn` to keep the paper upright.  The pages of several inputs are combined, e.g.,
 `pdf-splitter notes.pdf photo.jpg -o all.pdf`.  The command reads PDFs and
 JPEG images, which go into the PDF as they are; it has no library to read
 other images.

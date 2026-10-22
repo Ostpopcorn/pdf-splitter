@@ -6,7 +6,7 @@ from dataclasses import asdict, fields
 
 from .image import image_pdf, jpeg_pdf
 from .split import (MM, PAPERS, Options, count_annotations, layout_page,
-                    max_overlap, page_sizes, paper_size, read_pdf, split_pdfs)
+                    max_overlap, page_sizes, read_pdf, sheet_size, split_pdfs)
 
 _OPTIONS = {_field.name: _field.type for _field in fields(Options)}
 
@@ -66,18 +66,19 @@ def plan(request_json):
     points from the top of the page, the columns from its left. The paper,
     upright, and the paper of each page, which may be turned, its margin,
     the overlap, and the space on the left of a page that is shrunk are in
-    points on the paper."""
+    points on the paper. The paper is the pages of the new PDF, i.e., the
+    paper within the margins, without margins, if they are cropped."""
     request = json.loads(request_json)
     try:
         options = _options(request)
-        width, height = paper_size(options)
+        width, height, margin = sheet_size(options)
         layouts = [layout_page(_width, _height, options)
                    for _width, _height in request["pages"]]
     except ValueError as err:
         return json.dumps({"error": str(err)})
     return json.dumps({
         "paper": [width, height],
-        "margin": options.margin * MM,
+        "margin": margin,
         "overlap": options.overlap * MM,
         "max_overlap": max_overlap(options),
         "poster": options.poster,

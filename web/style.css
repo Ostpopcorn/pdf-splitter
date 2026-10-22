@@ -253,7 +253,7 @@ body:not(.has-files) .views { display: none; }
 .range { display: flex; align-items: center; gap: 10px; min-height: 30px; }
 .size-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .size-row .range { flex: 1 1 200px; }
-body:not(.poster) .for-poster, body.poster .for-split { display: none; }
+body:not(.poster) .for-poster { display: none; }
 .check { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
 .check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
 .check:hover { color: var(--text); }

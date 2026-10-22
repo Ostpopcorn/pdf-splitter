@@ -43,6 +43,10 @@ def main(argv=None):
     parser.add_argument("--center", action="store_true",
                         help="Put a poster in the middle of its pages, "
                         "instead of at their top left")
+    parser.add_argument("--crop", action="store_true",
+                        help="Leave out the margins: each page is the paper "
+                        "within the margins, which the printer places on "
+                        "the paper")
     parser.add_argument("--no-turn", dest="turn", action="store_false",
                         help="Keep the paper upright, also for wide pages "
                         "and posters that would need fewer pages turned")
@@ -68,7 +72,8 @@ def main(argv=None):
         result = split_pdfs(readers, Options(
             args.paper, args.overlap, args.margin, args.shrink, args.turn,
             args.poster is not None,
-            100 if args.poster is None else args.poster, args.center))
+            100 if args.poster is None else args.poster, args.center,
+            args.crop))
     except ValueError as err:
         parser.exit(1, "{}: error: {}\n".format(parser.prog, err))
     with open(output, "wb") as _file:

@@ -20,11 +20,10 @@ const PAPERS = {
   legal: { label: "Legal", size: [215.9, 355.6] },
 };
 const MAX_MARGIN = 25; // mm
-const MAX_SHRINK = 25; // percent
 const SCALES = [1, 1000]; // percent of a poster
-// Like Options in pdfsplitter/split.py
+// Like Options in pdfsplitter/split.py, whose shrink is used as it is
 const DEFAULT_SETTINGS = {
-  paper: "a4", overlap: 20, margin: 0, shrink: 10, turn: true, poster: false, scale: 100,
+  paper: "a4", overlap: 20, margin: 0, crop: false, turn: true, poster: false, scale: 100,
   center: false,
 };
 // The original pages, both side by side, or the split pages, which are
@@ -103,7 +102,6 @@ function maxOverlap({ paper, margin }) {
 function clampSettings(settings) {
   const clamp = (value, max, min = 0) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
   settings.margin = clamp(settings.margin, MAX_MARGIN);
-  settings.shrink = clamp(settings.shrink, MAX_SHRINK);
   settings.overlap = clamp(settings.overlap, maxOverlap(settings));
   settings.scale = clamp(settings.scale, SCALES[1], SCALES[0]);
   return settings;
@@ -801,8 +799,10 @@ function renderMeta() {
   $("#original-meta").textContent = files.length > 1
     ? `${plural(files.length, "file")} · ${plural(pages, "page")}`
     : files.length ? files[0].name + (pages ? ` · ${plural(pages, "page")}` : "") : "";
+  const { settings } = state;
   $("#result-meta").textContent = plan
-    ? `${plan.poster ? "Poster on " : ""}${PAPERS[state.settings.paper].label} · ${plural(sheetsOf(plan).length, "page")}` : "";
+    ? `${plan.poster ? "Poster on " : ""}${PAPERS[settings.paper].label}`
+      + `${settings.crop && settings.margin > 0 ? " without margins" : ""} · ${plural(sheetsOf(plan).length, "page")}` : "";
 }
 
 const ICON_WARN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>`;
@@ -829,7 +829,7 @@ function renderStatus() {
       const low = Math.min(...scales);
       const high = Math.max(...scales);
       messages.push(["info", `Scaled to ${low === high ? low : `${low}–${high}`}% to fit the width of ${paper}`
-        + (plan.margin > 0 ? ` within the margins` : "") + "."]);
+        + (state.settings.margin > 0 ? ` within the margins` : "") + "."]);
     }
   } else {
     counts.textContent = "";

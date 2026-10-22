@@ -2,10 +2,11 @@
 with an overlap."""
 from .image import image_pdf, jpeg_pdf
 from .split import (MM, PAPERS, Layout, Options, Result, layout_page,
-                    max_overlap, paper_size, split_pdf, split_pdfs)
+                    max_overlap, paper_size, sheet_size, split_pdf,
+                    split_pdfs)
 
 __version__ = "0.1.0"
 
 __all__ = ["MM", "PAPERS", "Layout", "Options", "Result", "image_pdf",
-           "jpeg_pdf", "layout_page", "max_overlap", "paper_size", "split_pdf",
-           "split_pdfs"]
+           "jpeg_pdf", "layout_page", "max_overlap", "paper_size", "sheet_size",
+           "split_pdf", "split_pdfs"]

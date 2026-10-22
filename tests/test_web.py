@@ -11,7 +11,8 @@ def test_defaults():
     defaults = json.loads(web.defaults())
     assert defaults["options"] == {"paper": "a4", "overlap": 20, "margin": 0,
                                    "shrink": 10, "turn": True, "poster": False,
-                                   "scale": 100, "center": False}
+                                   "scale": 100, "center": False,
+                                   "crop": False}
     assert defaults["papers"]["a4"] == [210, 297]
 
 
@@ -49,6 +50,15 @@ def test_plan():
     assert [len(_page["columns"]) for _page in response["pages"]] == [1, 1]
     assert response["pages"][0]["paper"] == pytest.approx(response["paper"])
     assert response["poster"] is False
+
+
+def test_plan_cropped():
+    response = json.loads(web.plan(json.dumps({
+        "pages": [[447, 1800]], "options": {"margin": 5, "crop": True}})))
+    # the pages of the new PDF are the paper within the margins
+    assert response["paper"] == pytest.approx([200 * MM, 287 * MM])
+    assert response["pages"][0]["paper"] == pytest.approx(response["paper"])
+    assert response["margin"] == 0
 
 
 def test_plan_poster():

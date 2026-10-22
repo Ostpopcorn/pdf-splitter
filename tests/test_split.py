@@ -6,7 +6,7 @@ from pypdf import PdfReader, PdfWriter
 
 from conftest import make_pdf
 from pdfsplitter import (MM, Options, layout_page, max_overlap, paper_size,
-                         split_pdf)
+                         sheet_size, split_pdf)
 from pdfsplitter.__main__ import main
 
 A4 = (210 * MM, 297 * MM)
@@ -146,6 +146,20 @@ def test_poster():
     assert not upright.turned and (len(upright.columns), len(upright.slices)) == (3, 3)
 
 
+@pytest.mark.parametrize("poster", [False, True])
+def test_crop_to_the_margins(poster):
+    options = Options(margin=10, poster=poster)
+    cropped = layout_page(447, 1800, Options(margin=10, poster=poster, crop=True))
+    layout = layout_page(447, 1800, options)
+    # the same slices on the paper within the margins, without them
+    assert cropped.paper == pytest.approx((A4[0] - 20 * MM, A4[1] - 20 * MM))
+    assert (cropped.scale, cropped.slices, cropped.columns) == (
+        layout.scale, layout.slices, layout.columns)
+    assert sheet_size(options) == pytest.approx((*A4, 10 * MM))
+    assert sheet_size(Options(margin=10, crop=True)) == pytest.approx(
+        (*cropped.paper, 0))
+
+
 def test_centered_poster():
     options = Options(poster=True, scale=100, overlap=20, margin=5)
     corner = layout_page(*A2, options)
@@ -273,6 +287,10 @@ def test_cli_poster(tmp_path, capsys):
         [0, 0, *A4[::-1]])
     main([str(source), "--poster", "100", "--margin", "5", "--no-turn"])
     assert len(PdfReader(str(tmp_path / "plan-poster-a4.pdf")).pages) == 9
+    main([str(source), "--poster", "100", "--margin", "5", "--crop"])
+    page = PdfReader(str(tmp_path / "plan-poster-a4.pdf")).pages[0]
+    assert [float(_value) for _value in page.mediabox] == pytest.approx(
+        [0, 0, A4[1] - 10 * MM, A4[0] - 10 * MM])
     main([str(source), "--poster", "100", "--margin", "5", "--center"])
     content = PdfReader(str(tmp_path / "plan-poster-a4.pdf")).pages[0].get_contents()
     # the poster starts right of and below the margins of its first page
@@ -332,16 +350,16 @@ def _neighbors(numpy, image, reach=2):
     ((0, 0, 1500, 400), 0),
     ((0, 0, 596, 447), 0),
 ])
-@pytest.mark.parametrize("margin", [0, 12])
+@pytest.mark.parametrize("margin, crop", [(0, False), (12, False), (12, True)])
 @pytest.mark.parametrize("poster, center", [(False, False), (True, False),
                                             (True, True)])
-def test_rendered_slices(box, rotation, margin, poster, center):
+def test_rendered_slices(box, rotation, margin, crop, poster, center):
     pdfium = pytest.importorskip("pypdfium2")
     numpy = pytest.importorskip("numpy")
     source = make_pdf([(box, rotation)])
     result = split_pdf(source, Options(overlap=25, margin=margin,
                                        poster=poster, scale=150,
-                                       center=center))
+                                       center=center, crop=crop))
     layout = result.layouts[0]
     resolution = 0.5  # pixels per point of the original
     original = _render(pdfium, source, resolution)[0]
@@ -351,7 +369,8 @@ def test_rendered_slices(box, rotation, margin, poster, center):
     assert len(pages) == layout.sheets > 0
     sheets = [(_row, _column) for _row in layout.slices
               for _column in layout.columns]
-    edge = round(margin * MM * resolution / layout.scale)
+    # pages that are cropped to the margins have none
+    edge = 0 if crop else round(margin * MM * resolution / layout.scale)
     for page, ((_top, _bottom), (_left, _right)) in zip(pages, sheets):
         # the paper, turned or not, within a pixel
         assert page.shape == (
