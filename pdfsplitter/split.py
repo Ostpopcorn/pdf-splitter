@@ -55,7 +55,9 @@ class Options:
 
     A poster is each page at scale percent of its size, which is not shrunk,
     on as many rows and columns of pages of paper as it needs. Its paper is
-    turned if it then needs fewer pages."""
+    turned if it then needs fewer pages. It starts at the top left of its
+    pages, or is in their middle if it is centered, so that the paper that
+    it leaves empty is on all sides."""
     paper: str = "a4"
     overlap: float = 20
     margin: float = 0
@@ -63,6 +65,7 @@ class Options:
     turn: bool = True
     poster: bool = False
     scale: float = 100
+    center: bool = False
 
 
 @dataclass(frozen=True)
@@ -73,9 +76,11 @@ class Layout:
     top and bottom of each slice are in points from the top of the page, the
     left and right of each column from its left. The last slice and column
     may end beyond the page, where the paper stays empty. A page that is
-    shrunk is centered, left is the space on its left within the margins in
-    points on the paper. Paper is the width and the height of its pages of
-    paper in points, which are turned if they are wider than high."""
+    shrunk, or a poster that is centered, is in the middle of its pages:
+    left and top are the space on its left and above it within the margins
+    in points on the paper, where the first column and slice start before
+    the page. Paper is the width and the height of its pages of paper in
+    points, which are turned if they are wider than high."""
     width: float
     height: float
     scale: float
@@ -83,6 +88,7 @@ class Layout:
     left: float = 0
     columns: List[Tuple[float, float]] = field(default_factory=list)
     paper: Tuple[float, float] = (0, 0)
+    top: float = 0
 
     @property
     def turned(self):
@@ -156,11 +162,16 @@ def _layout(width, height, options, turned):
     content_width, content_height, overlap = _content_size(options, turned)
     step_x = content_width - overlap
     step_y = content_height - overlap
+    top = 0.0
     if options.poster:
         scale = options.scale / 100
         count = _count(height * scale, content_height, step_y)
         columns = _count(width * scale, content_width, step_x)
         left = 0.0
+        if options.center:
+            # half of the paper that the poster leaves empty on each side
+            left = (columns * step_x + overlap - width * scale) / 2
+            top = (count * step_y + overlap - height * scale) / 2
     else:
         scale = content_width / width
         count = _count(height * scale, content_height, step_y)
@@ -176,13 +187,14 @@ def _layout(width, height, options, turned):
         left = (content_width - width * scale) / 2
     paper = paper_size(options)
     return Layout(width, height, scale,
-                  [(_i * step_y / scale, (_i * step_y + content_height) / scale)
+                  [((_i * step_y - top) / scale,
+                    (_i * step_y - top + content_height) / scale)
                    for _i in range(count)],
                   left,
                   [((_i * step_x - left) / scale,
                     (_i * step_x - left + content_width) / scale)
                    for _i in range(columns)],
-                  paper[::-1] if turned else paper)
+                  paper[::-1] if turned else paper, top)
 
 
 def layout_page(width, height, options=Options()):

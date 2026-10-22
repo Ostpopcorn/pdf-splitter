@@ -57,7 +57,10 @@ your files never leave your computer.
   you can glue them.  Set the margin to the edge where your printer does not
   print, and print at actual size (100 %), not fit to page: nothing else
   scales the poster, and nothing is in the margins.  The size of each poster
-  is shown in mm, and the paper is turned if it then needs fewer pages.
+  is shown in mm, and the paper is turned if it then needs fewer pages.  A
+  poster starts at the top left of its pages, or is in their middle if you
+  check _Center on the pages_, so that the paper that it leaves empty is on
+  all sides.
 * The strokes of a PDF stay vectors, so they are as sharp as in the
   original, and each page is in the PDF only once, however many pages of
   paper show it.
@@ -84,8 +87,9 @@ pdf-splitter notes.pdf                      # writes notes-a4.pdf
 pdf-splitter notes.pdf --overlap 30 --margin 5 --paper letter -o print.pdf
 ```
 Use `--shrink 0` to scale every page to the width of the paper,
-`--poster 100 --margin 5` for posters at their actual size, and `--no-turn`
-to keep the paper upright.  The pages of several inputs are combined, e.g.,
+`--poster 100 --margin 5` for posters at their actual size, `--center` to put
+them in the middle of their pages, and `--no-turn` to keep the paper
+upright.  The pages of several inputs are combined, e.g.,
 `pdf-splitter notes.pdf photo.jpg -o all.pdf`.  The command reads PDFs and
 JPEG images, which go into the PDF as they are; it has no library to read
 other images.

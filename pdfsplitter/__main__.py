@@ -40,6 +40,9 @@ def main(argv=None):
                         "rows and columns of pages, which overlap. Print it "
                         "at actual size, and set the margin to the edge "
                         "where your printer does not print.")
+    parser.add_argument("--center", action="store_true",
+                        help="Put a poster in the middle of its pages, "
+                        "instead of at their top left")
     parser.add_argument("--no-turn", dest="turn", action="store_false",
                         help="Keep the paper upright, also for wide pages "
                         "and posters that would need fewer pages turned")
@@ -65,7 +68,7 @@ def main(argv=None):
         result = split_pdfs(readers, Options(
             args.paper, args.overlap, args.margin, args.shrink, args.turn,
             args.poster is not None,
-            100 if args.poster is None else args.poster))
+            100 if args.poster is None else args.poster, args.center))
     except ValueError as err:
         parser.exit(1, "{}: error: {}\n".format(parser.prog, err))
     with open(output, "wb") as _file:

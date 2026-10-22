@@ -25,6 +25,7 @@ const SCALES = [1, 1000]; // percent of a poster
 // Like Options in pdfsplitter/split.py
 const DEFAULT_SETTINGS = {
   paper: "a4", overlap: 20, margin: 0, shrink: 10, turn: true, poster: false, scale: 100,
+  center: false,
 };
 // The original pages, both side by side, or the split pages, which are
 // shown at first
@@ -673,7 +674,8 @@ function renderSlices(plan, pages) {
     out += page.slices.length * cols;
     if (!orig) return;
     const [width, height] = pages[idx];
-    const vertical = (top, bottom) => `top: ${percent(top / height)}; height: ${percent((Math.min(bottom, height) - top) / height)}`;
+    // a centered poster starts above and left of the page
+    const vertical = (top, bottom) => `top: ${percent(Math.max(0, top) / height)}; height: ${percent((Math.min(bottom, height) - Math.max(0, top)) / height)}`;
     const horizontal = (left, right) => `left: ${percent(Math.max(0, left) / width)}; width: ${percent((Math.min(right, width) - Math.max(0, left)) / width)}`;
     $(".page-label span", orig).textContent = pageNote(plan, page, pages[idx]);
     $(".brackets", orig).innerHTML = cols > 1 ? "" : page.slices.map(([top, bottom], part) => `
@@ -719,10 +721,10 @@ function renderSheets(plan, sheets) {
     const contentHeight = paperHeight - 2 * margin;
     const box = `left: ${percent(margin / paperWidth)}; top: ${percent(margin / paperHeight)};
       width: ${percent(contentWidth / paperWidth)}; height: ${percent(contentHeight / paperHeight)}`;
-    // the page from the left of its column, which is left of the page if it
-    // is shrunk, and the top of its slice
+    // the page from the left of its column and the top of its slice, which
+    // are left of and above the page if it is shrunk or centered
     const place = `left: ${percent(-left * scale / contentWidth)}; width: ${percent(width * scale / contentWidth)};
-      transform: translateY(-${percent(top / height)})`;
+      transform: translateY(${percent(-top / height)})`;
     const bandX = percent(Math.min(1, overlap / contentWidth));
     const bandY = percent(Math.min(1, overlap / contentHeight));
     const bands = overlap > 0 ? [
@@ -821,7 +823,7 @@ function renderStatus() {
       messages.push(["warning", "Print at actual size (100%), not fit to page."]);
       messages.push(["info", `At ${state.settings.scale}%`
         + (plan.pages.length === 1 ? `: ${pageNote(plan, plan.pages[0], pageSizes()[0]).slice(2)}` : "")
-        + ` of ${paper}.`]);
+        + ` of ${paper}${state.settings.center ? ", centered" : ""}.`]);
     } else {
       const scales = plan.pages.map((page) => Math.round(page.scale * 100));
       const low = Math.min(...scales);
@@ -895,8 +897,9 @@ function highlight(out, on) {
   const hl = $(`[data-orig="${sheet.page}"] .slice-hl`);
   if (!hl) return;
   const [width, height] = pages[sheet.page];
-  hl.style.top = percent(sheet.top / height);
-  hl.style.height = percent((Math.min(sheet.bottom, height) - sheet.top) / height);
+  const top = Math.max(0, sheet.top);
+  hl.style.top = percent(top / height);
+  hl.style.height = percent((Math.min(sheet.bottom, height) - top) / height);
   // the column of a page in columns
   const left = Math.max(0, sheet.left);
   hl.style.left = sheet.cols > 1 ? percent(left / width) : "";
@@ -941,7 +944,7 @@ $("#result").addEventListener("click", (event) => {
   const paper = $(`[data-orig="${sheet.page}"] .paper`);
   if (!paper) return;
   const height = pageSizes()[sheet.page][1];
-  scrollWithin($("#original"), paper, paper.offsetHeight * sheet.top / height);
+  scrollWithin($("#original"), paper, paper.offsetHeight * Math.max(0, sheet.top) / height);
 });
 
 /* Linked scrolling, like in TeX Tools */

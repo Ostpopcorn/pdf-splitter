@@ -146,6 +146,31 @@ def test_poster():
     assert not upright.turned and (len(upright.columns), len(upright.slices)) == (3, 3)
 
 
+def test_centered_poster():
+    options = Options(poster=True, scale=100, overlap=20, margin=5)
+    corner = layout_page(*A2, options)
+    layout = layout_page(*A2, Options(poster=True, scale=100, overlap=20,
+                                      margin=5, center=True))
+    # on the same pages, which it leaves as empty on the left as on the
+    # right, and above as below
+    assert (layout.paper, layout.scale) == (corner.paper, corner.scale)
+    assert (len(layout.columns), len(layout.slices)) == (2, 4)
+    assert layout.left > 0 and layout.top > 0
+    assert -layout.columns[0][0] == pytest.approx(layout.left)
+    assert layout.columns[-1][1] - A2[0] == pytest.approx(layout.left)
+    assert -layout.slices[0][0] == pytest.approx(layout.top)
+    assert layout.slices[-1][1] - A2[1] == pytest.approx(layout.top)
+    # the columns and slices overlap like those at the top left
+    for _shifted, _corner in zip(layout.columns, corner.columns):
+        assert _shifted == pytest.approx((_corner[0] - layout.left,
+                                          _corner[1] - layout.left))
+    for _shifted, _corner in zip(layout.slices, corner.slices):
+        assert _shifted == pytest.approx((_corner[0] - layout.top,
+                                          _corner[1] - layout.top))
+    # a page of reading is not centered
+    assert layout_page(447, 1800, Options(center=True)).top == 0
+
+
 def test_poster_at_the_exact_scale():
     # A2 at 50 % is A4, without shrinking or centering anything
     layout = layout_page(*A2, Options(poster=True, scale=50))
@@ -248,6 +273,11 @@ def test_cli_poster(tmp_path, capsys):
         [0, 0, *A4[::-1]])
     main([str(source), "--poster", "100", "--margin", "5", "--no-turn"])
     assert len(PdfReader(str(tmp_path / "plan-poster-a4.pdf")).pages) == 9
+    main([str(source), "--poster", "100", "--margin", "5", "--center"])
+    content = PdfReader(str(tmp_path / "plan-poster-a4.pdf")).pages[0].get_contents()
+    # the poster starts right of and below the margins of its first page
+    place = content.get_data().split(b"\n")[2].split()
+    assert float(place[4]) > 5 * MM and float(place[5]) < A4[0] - 5 * MM - A2[1]
     with pytest.raises(SystemExit):
         main([str(source), "--poster", "0"])
     capsys.readouterr()
@@ -303,13 +333,15 @@ def _neighbors(numpy, image, reach=2):
     ((0, 0, 596, 447), 0),
 ])
 @pytest.mark.parametrize("margin", [0, 12])
-@pytest.mark.parametrize("poster", [False, True])
-def test_rendered_slices(box, rotation, margin, poster):
+@pytest.mark.parametrize("poster, center", [(False, False), (True, False),
+                                            (True, True)])
+def test_rendered_slices(box, rotation, margin, poster, center):
     pdfium = pytest.importorskip("pypdfium2")
     numpy = pytest.importorskip("numpy")
     source = make_pdf([(box, rotation)])
     result = split_pdf(source, Options(overlap=25, margin=margin,
-                                       poster=poster, scale=150))
+                                       poster=poster, scale=150,
+                                       center=center))
     layout = result.layouts[0]
     resolution = 0.5  # pixels per point of the original
     original = _render(pdfium, source, resolution)[0]
@@ -325,13 +357,15 @@ def test_rendered_slices(box, rotation, margin, poster):
         assert page.shape == (
             pytest.approx(layout.paper[1] * resolution / layout.scale, abs=1),
             pytest.approx(layout.paper[0] * resolution / layout.scale, abs=1))
-        top = round(_top * resolution)
+        top = max(0, round(_top * resolution))
         rows = min(round(_bottom * resolution), original.shape[0]) - top
         start = max(0, round(_left * resolution))
         width = min(round(_right * resolution), original.shape[1]) - start
-        # where the left of the page or of the column is on the paper
+        # where the top and the left of the page or of the slice and the
+        # column are on the paper
+        upper = edge + top - round(_top * resolution)
         left = edge + start - round(_left * resolution)
-        shown = page[edge:edge + rows, left:left + width]
+        shown = page[upper:upper + rows, left:left + width]
         expected = original[top:top + rows, start:start + width]
         assert shown.shape == expected.shape
         darkest, lightest = _neighbors(numpy, expected)
@@ -340,7 +374,7 @@ def test_rendered_slices(box, rotation, margin, poster):
         # the margins and the paper beyond the page stay empty, but for the
         # pixels at the edges, which are rounded
         empty = page.copy()
-        empty[max(0, edge - 2):edge + rows + 2,
+        empty[max(0, upper - 2):upper + rows + 2,
               max(0, left - 2):left + width + 2] = 255
         assert empty.min() > 250
     # there are bars to compare

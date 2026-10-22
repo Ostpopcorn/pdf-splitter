@@ -11,7 +11,7 @@ def test_defaults():
     defaults = json.loads(web.defaults())
     assert defaults["options"] == {"paper": "a4", "overlap": 20, "margin": 0,
                                    "shrink": 10, "turn": True, "poster": False,
-                                   "scale": 100}
+                                   "scale": 100, "center": False}
     assert defaults["papers"]["a4"] == [210, 297]
 
 
