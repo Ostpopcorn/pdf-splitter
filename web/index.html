@@ -57,14 +57,18 @@
       <div class="field field-paper">
         <div class="field-head">
           <h3 id="paper-label">Paper</h3>
-          <p>Each page is scaled to its width</p>
+          <p data-split="Each page is scaled to its width" data-poster="Each page is cut into rows and columns of paper"></p>
         </div>
         <div class="segmented" id="paper" role="radiogroup" aria-labelledby="paper-label"></div>
+        <label class="check" title="Print a wide page, or a poster, on landscape paper if it then needs fewer pages, or is larger on as many. Your print dialog turns them, which most do on their own.">
+          <input type="checkbox" id="turn" data-setting="turn">
+          <span data-split="Turn the paper for wide pages" data-poster="Turn the paper if it saves pages"></span>
+        </label>
       </div>
       <div class="field">
         <div class="field-head">
           <h3><label for="overlap-number">Overlap</label></h3>
-          <p>The end of a page is repeated at the top of the next one</p>
+          <p data-split="The end of a page is repeated at the top of the next one" data-poster="The edges of a page are repeated on the next ones, to glue them"></p>
         </div>
         <div class="range">
           <input type="range" id="overlap" data-setting="overlap" min="0" max="100" step="1" aria-label="Overlap in mm">
@@ -74,7 +78,7 @@
       <div class="field">
         <div class="field-head">
           <h3><label for="margin-number">Margin</label></h3>
-          <p>For a printer that does not print to the edge</p>
+          <p data-split="For a printer that does not print to the edge" data-poster="Where your printer does not print, on each side"></p>
         </div>
         <div class="range">
           <input type="range" id="margin" data-setting="margin" min="0" max="25" step="1" aria-label="Margin in mm">
@@ -83,12 +87,26 @@
       </div>
       <div class="field">
         <div class="field-head">
-          <h3><label for="shrink-number">Shrink</label></h3>
-          <p>Up to this much smaller to save a page</p>
+          <h3 id="size-label">Size</h3>
+          <p data-split="Up to this much smaller to save a page" data-poster="Exactly this much of the original. Print at actual size."></p>
         </div>
-        <div class="range">
-          <input type="range" id="shrink" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent">
-          <span class="number"><input type="number" id="shrink-number" data-setting="shrink" min="0" max="25" step="1"><span>%</span></span>
+        <div class="size-row">
+          <div class="segmented" id="mode" role="radiogroup" aria-labelledby="size-label">
+            <label title="Scale each page to the width of the paper, and split it into pages that follow each other">
+              <input type="radio" name="mode" value="split"><span>Fit width</span>
+            </label>
+            <label title="Print each page at a scale, on rows and columns of pages to cut and glue together">
+              <input type="radio" name="mode" value="poster"><span>Poster</span>
+            </label>
+          </div>
+          <div class="range for-split">
+            <input type="range" id="shrink" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent">
+            <span class="number"><input type="number" id="shrink-number" data-setting="shrink" min="0" max="25" step="1" aria-label="Shrink in percent"><span>%</span></span>
+          </div>
+          <div class="range for-poster">
+            <input type="range" id="scale" data-setting="scale" min="10" max="400" step="1" aria-label="Scale in percent">
+            <span class="number"><input type="number" id="scale-number" data-setting="scale" min="1" max="1000" step="0.1" aria-label="Scale in percent"><span>%</span></span>
+          </div>
         </div>
       </div>
     </article>
@@ -164,7 +182,7 @@
       <button class="btn ghost icon-btn" data-dialog-close aria-label="Close">×</button>
     </header>
     <div class="about-body">
-      <p><strong>PDF Splitter</strong> prints notes with pages that are longer than the paper, e.g., from a reMarkable. Each page is scaled to the width of the paper and split onto as many pages as it needs. The end of each page is repeated at the top of the next one, so that a line of handwriting that is cut at the end of a page is whole on the next page. The strokes of a PDF stay sharp vectors, and each page is in the PDF only once, however often it is shown. An image, e.g., a page exported as a PNG or a photo, is split like a page of a PDF. Several files are combined in one split PDF.</p>
+      <p><strong>PDF Splitter</strong> prints notes with pages that are longer than the paper, e.g., from a reMarkable. Each page is scaled to the width of the paper and split onto as many pages as it needs. The end of each page is repeated at the top of the next one, so that a line of handwriting that is cut at the end of a page is whole on the next page. The strokes of a PDF stay sharp vectors, and each page is in the PDF only once, however often it is shown. An image, e.g., a page exported as a PNG or a photo, is split like a page of a PDF. Several files are combined in one split PDF. A poster is each page at a scale that you set, on rows and columns of pages that overlap, to cut and glue together; print it at actual size.</p>
       <div class="about-links">
         <a class="about-link" href="https://github.com/Ostpopcorn/pdf-splitter" target="_blank" rel="noopener">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/></svg>

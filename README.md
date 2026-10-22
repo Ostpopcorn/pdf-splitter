@@ -28,6 +28,10 @@ your files never leave your computer.
 * A page is made up to 10 % smaller (the _shrink_) if it then needs fewer
   pages, e.g., a page of a reMarkable, which is a bit too long for Letter, or
   a long page whose last bit would be almost alone on a page.
+* A wide page goes on landscape paper if it then needs fewer pages, or is
+  larger on as many, e.g., a landscape page of a reMarkable, which is 133 %
+  instead of 100 %.  Most print dialogs turn landscape pages on their own;
+  if yours does not, uncheck _Turn the paper_.
 * Show the split pages, the original pages with the cuts, or both _side by
   side_.  Side by side, scrolling is linked like in TeX Tools: both sides show
   the same part of the page.  Click the link between them to scroll them
@@ -47,6 +51,13 @@ your files never leave your computer.
   split PDF.  Files that you open together are in the order of their names,
   and files that you add follow the open ones.  Drag the name of a file to
   change the order, or close it with the × next to it.
+* A _poster_ is each page at a scale that you set, e.g., 100 % for its actual
+  size, on rows and columns of pages that you cut and glue together.  The
+  overlap is repeated at the edges of the pages in both directions, so that
+  you can glue them.  Set the margin to the edge where your printer does not
+  print, and print at actual size (100 %), not fit to page: nothing else
+  scales the poster, and nothing is in the margins.  The size of each poster
+  is shown in mm, and the paper is turned if it then needs fewer pages.
 * The strokes of a PDF stay vectors, so they are as sharp as in the
   original, and each page is in the PDF only once, however many pages of
   paper show it.
@@ -72,10 +83,12 @@ pip install .
 pdf-splitter notes.pdf                      # writes notes-a4.pdf
 pdf-splitter notes.pdf --overlap 30 --margin 5 --paper letter -o print.pdf
 ```
-Use `--shrink 0` to scale every page to the width of the paper.  The pages of
-several inputs are combined, e.g., `pdf-splitter notes.pdf photo.jpg -o
-all.pdf`.  The command reads PDFs and JPEG images, which go into the PDF as
-they are; it has no library to read other images.
+Use `--shrink 0` to scale every page to the width of the paper,
+`--poster 100 --margin 5` for posters at their actual size, and `--no-turn`
+to keep the paper upright.  The pages of several inputs are combined, e.g.,
+`pdf-splitter notes.pdf photo.jpg -o all.pdf`.  The command reads PDFs and
+JPEG images, which go into the PDF as they are; it has no library to read
+other images.
 
 In Python:
 ```python
@@ -87,7 +100,8 @@ with open("notes-a4.pdf", "wb") as _file:
     _file.write(result.data)
 print(result.pages, [len(_layout.slices) for _layout in result.layouts])
 ```
-`split_pdfs([pdf, ...], options)` combines PDFs.  `jpeg_pdf(data)` puts a
+`Options(poster=True, scale=100)` makes posters, and `split_pdfs([pdf, ...],
+options)` combines PDFs.  `jpeg_pdf(data)` puts a
 JPEG image, and `image_pdf(pixels, width, height)` an image as RGB pixels, on
 a page of a PDF, which you can split like any other.
 

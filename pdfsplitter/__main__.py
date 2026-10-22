@@ -3,6 +3,7 @@
     python -m pdfsplitter notes.pdf                 # writes notes-a4.pdf
     python -m pdfsplitter notes.pdf --overlap 30 --paper letter -o out.pdf
     python -m pdfsplitter notes.pdf photo.jpg -o all.pdf  # combines them
+    python -m pdfsplitter plan.pdf --poster 100 --margin 5  # plan-poster-a4.pdf
 """
 import argparse
 import os
@@ -34,9 +35,18 @@ def main(argv=None):
                         metavar="PERCENT", help="Make a page up to this much "
                         "smaller if it then needs fewer pages, e.g., a page "
                         "that is a bit too long (default: %(default)g %%)")
+    parser.add_argument("--poster", type=float, metavar="PERCENT",
+                        help="Make each page a poster at this scale, on "
+                        "rows and columns of pages, which overlap. Print it "
+                        "at actual size, and set the margin to the edge "
+                        "where your printer does not print.")
+    parser.add_argument("--no-turn", dest="turn", action="store_false",
+                        help="Keep the paper upright, also for wide pages "
+                        "and posters that would need fewer pages turned")
     args = parser.parse_args(argv)
-    output = args.output or "{}-{}.pdf".format(
-        os.path.splitext(args.inputs[0])[0], args.paper)
+    output = args.output or "{}-{}{}.pdf".format(
+        os.path.splitext(args.inputs[0])[0],
+        "poster-" if args.poster is not None else "", args.paper)
     if any(os.path.abspath(output) == os.path.abspath(_input)
            for _input in args.inputs):
         parser.error("The output would overwrite an input")
@@ -52,8 +62,10 @@ def main(argv=None):
             parser.exit(1, "{}: error: {}: {}\n".format(parser.prog, _input,
                                                         err))
     try:
-        result = split_pdfs(readers, Options(args.paper, args.overlap,
-                                             args.margin, args.shrink))
+        result = split_pdfs(readers, Options(
+            args.paper, args.overlap, args.margin, args.shrink, args.turn,
+            args.poster is not None,
+            100 if args.poster is None else args.poster))
     except ValueError as err:
         parser.exit(1, "{}: error: {}\n".format(parser.prog, err))
     with open(output, "wb") as _file:

@@ -10,7 +10,8 @@ from pdfsplitter import MM, web
 def test_defaults():
     defaults = json.loads(web.defaults())
     assert defaults["options"] == {"paper": "a4", "overlap": 20, "margin": 0,
-                                   "shrink": 10}
+                                   "shrink": 10, "turn": True, "poster": False,
+                                   "scale": 100}
     assert defaults["papers"]["a4"] == [210, 297]
 
 
@@ -42,9 +43,24 @@ def test_plan():
     assert response["paper"] == pytest.approx([210 * MM, 297 * MM])
     assert response["margin"] == pytest.approx(5 * MM)
     assert response["overlap"] == pytest.approx(20 * MM)
-    assert response["max_overlap"] == pytest.approx(143.5)
+    assert response["max_overlap"] == pytest.approx(100)
     assert [len(_page["slices"]) for _page in response["pages"]] == [1, 3]
     assert [_page["left"] for _page in response["pages"]] == [0, 0]
+    assert [len(_page["columns"]) for _page in response["pages"]] == [1, 1]
+    assert response["pages"][0]["paper"] == pytest.approx(response["paper"])
+    assert response["poster"] is False
+
+
+def test_plan_poster():
+    response = json.loads(web.plan(json.dumps({
+        "pages": [[420 * MM, 594 * MM], [596, 447]],
+        "options": {"poster": True, "scale": "100", "turn": True}})))
+    assert response["poster"] is True
+    poster, small = response["pages"]
+    assert poster["scale"] == 1
+    assert (len(poster["columns"]), len(poster["slices"])) == (2, 4)
+    assert poster["paper"] == pytest.approx([297 * MM, 210 * MM])
+    assert (len(small["columns"]), len(small["slices"])) == (1, 1)
 
 
 def test_plan_error():

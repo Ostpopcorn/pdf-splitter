@@ -21,7 +21,11 @@ const PAPERS = {
 };
 const MAX_MARGIN = 25; // mm
 const MAX_SHRINK = 25; // percent
-const DEFAULT_SETTINGS = { paper: "a4", overlap: 20, margin: 0, shrink: 10 };
+const SCALES = [1, 1000]; // percent of a poster
+// Like Options in pdfsplitter/split.py
+const DEFAULT_SETTINGS = {
+  paper: "a4", overlap: 20, margin: 0, shrink: 10, turn: true, poster: false, scale: 100,
+};
 // The original pages, both side by side, or the split pages, which are
 // shown at first
 const VIEWS = ["original", "both", "split"];
@@ -89,17 +93,18 @@ function loadSettings() {
   return clampSettings(settings);
 }
 
-// The largest overlap for the paper and the margin, like max_overlap in
-// pdfsplitter/split.py
+// The largest overlap for the paper and the margin, half of its shorter
+// side, which may be turned, like max_overlap in pdfsplitter/split.py
 function maxOverlap({ paper, margin }) {
-  return Math.max(0, Math.floor((PAPERS[paper].size[1] - 2 * margin) / 2));
+  return Math.max(0, Math.floor((Math.min(...PAPERS[paper].size) - 2 * margin) / 2));
 }
 
 function clampSettings(settings) {
-  const clamp = (value, max) => Math.min(max, Math.max(0, Number.isFinite(value) ? value : 0));
+  const clamp = (value, max, min = 0) => Math.min(max, Math.max(min, Number.isFinite(value) ? value : min));
   settings.margin = clamp(settings.margin, MAX_MARGIN);
   settings.shrink = clamp(settings.shrink, MAX_SHRINK);
   settings.overlap = clamp(settings.overlap, maxOverlap(settings));
+  settings.scale = clamp(settings.scale, SCALES[1], SCALES[0]);
   return settings;
 }
 
@@ -239,11 +244,16 @@ function showError(message) {
 function applySettingsToUI() {
   const { settings } = state;
   for (const input of $$("#paper input")) input.checked = input.value === settings.paper;
+  for (const input of $$("#mode input")) input.checked = (input.value === "poster") === settings.poster;
+  document.body.classList.toggle("poster", settings.poster);
+  // the hints of the mode
+  for (const el of $$("[data-split]")) el.textContent = el.dataset[settings.poster ? "poster" : "split"];
   const max = maxOverlap(settings);
   for (const input of $$("[data-setting]")) {
     if (input.dataset.setting === "overlap") input.max = max;
+    if (input.type === "checkbox") input.checked = settings[input.dataset.setting];
     // keep what is typed in the number field, e.g., an empty field
-    if (input !== document.activeElement || input.type === "range") {
+    else if (input !== document.activeElement || input.type === "range") {
       input.value = settings[input.dataset.setting];
     }
   }
@@ -269,6 +279,10 @@ $("#options").addEventListener("input", (event) => {
   const input = event.target;
   if (input.name === "paper") {
     changeSetting("paper", input.value);
+  } else if (input.name === "mode") {
+    changeSetting("poster", input.value === "poster");
+  } else if (input.type === "checkbox") {
+    changeSetting(input.dataset.setting, input.checked);
   } else if (input.dataset.setting) {
     const value = parseFloat(input.value);
     if (Number.isFinite(value)) changeSetting(input.dataset.setting, value);
@@ -276,7 +290,7 @@ $("#options").addEventListener("input", (event) => {
 });
 // Show the value that is used after typing, e.g., the largest overlap
 $("#options").addEventListener("change", (event) => {
-  if (event.target.type === "number") {
+  if (event.target.type === "number" && event.target.dataset.setting) {
     event.target.value = state.settings[event.target.dataset.setting];
   }
 });
@@ -611,78 +625,130 @@ function renderOriginal() {
 }
 
 // The pages of paper of the plan, each with the page of the original that
-// it shows and the slice of that page
+// The pages of paper of the plan, row by row, each with the page of the
+// original that it shows, and the slice and the column of that page
 function sheetsOf(plan) {
   const sheets = [];
   plan.pages.forEach((page, idx) => {
-    page.slices.forEach(([top, bottom], part) => {
-      sheets.push({ page: idx, part, count: page.slices.length, top, bottom, scale: page.scale, left: page.left });
+    const rows = page.slices.length;
+    const cols = page.columns.length;
+    page.slices.forEach(([top, bottom], row) => {
+      page.columns.forEach(([left, right], col) => {
+        sheets.push({
+          page: idx, row, col, rows, cols, part: row * cols + col, count: rows * cols,
+          top, bottom, left, right, scale: page.scale, paper: page.paper,
+        });
+      });
     });
   });
   return sheets;
 }
 
-// The scale of a page as wide as the paper within the margins
-const fullScale = (plan, width) => (plan.paper[0] - 2 * plan.margin) / width;
+const MM = 72 / 25.4; // points per mm
+const mm = (points) => Math.round(points / MM * 10) / 10;
 
+// What becomes of a page: its size on a poster, or how it is split
+function pageNote(plan, page, [width, height]) {
+  const rows = page.slices.length;
+  const cols = page.columns.length;
+  const turned = page.paper[0] > page.paper[1] ? " landscape" : "";
+  if (plan.poster) {
+    return `· ${mm(width * page.scale)} × ${mm(height * page.scale)} mm on `
+      + (rows * cols > 1 ? `${cols} × ${rows}${turned} pages` : `one${turned} page`);
+  }
+  // smaller than the width of the paper within the margins
+  const shrunk = Math.round((1 - page.scale * width / (page.paper[0] - 2 * plan.margin)) * 100);
+  return (rows > 1 ? `· split onto ${rows}${turned} pages` : `· fits on one${turned} page`)
+    + (shrunk > 0 ? `, ${shrunk}% smaller` : "");
+}
+
+// The cuts on the original pages: brackets on the left of a page in one
+// column, numbered cells on a page in columns, and the overlaps
 function renderSlices(plan, pages) {
   let out = 0;
   plan.pages.forEach((page, idx) => {
     const orig = $(`[data-orig="${idx}"]`);
+    const cols = page.columns.length;
+    const first = out;
+    out += page.slices.length * cols;
     if (!orig) return;
     const [width, height] = pages[idx];
-    const count = page.slices.length;
-    const shrunk = Math.round((1 - page.scale / fullScale(plan, width)) * 100);
-    $(".page-label span", orig).textContent = (count > 1 ? `· split onto ${count} pages` : "· fits on one page")
-      + (shrunk > 0 ? `, ${shrunk}% smaller` : "");
-    $(".brackets", orig).innerHTML = page.slices.map(([top, bottom], part) => `
-      <div class="bracket ${part % 2 ? "odd" : "even"}" data-out="${out + part}"
-           title="Page ${out + part + 1} of the split PDF"
-           style="top: ${percent(top / height)}; height: ${percent((Math.min(bottom, height) - top) / height)}">
-        <b>${out + part + 1}</b>
+    const vertical = (top, bottom) => `top: ${percent(top / height)}; height: ${percent((Math.min(bottom, height) - top) / height)}`;
+    const horizontal = (left, right) => `left: ${percent(Math.max(0, left) / width)}; width: ${percent((Math.min(right, width) - Math.max(0, left)) / width)}`;
+    $(".page-label span", orig).textContent = pageNote(plan, page, pages[idx]);
+    $(".brackets", orig).innerHTML = cols > 1 ? "" : page.slices.map(([top, bottom], part) => `
+      <div class="bracket ${part % 2 ? "odd" : "even"}" data-out="${first + part}"
+           title="Page ${first + part + 1} of the split PDF" style="${vertical(top, bottom)}">
+        <b>${first + part + 1}</b>
       </div>`).join("");
     const paper = $(".paper", orig);
-    for (const el of $$(".band", paper)) el.remove();
-    page.slices.slice(1).forEach(([top], part) => {
-      const bottom = page.slices[part][1];
+    for (const el of $$(".band, .cell", paper)) el.remove();
+    const html = [];
+    page.slices.slice(1).forEach(([top], row) => {
+      const bottom = page.slices[row][1];
       if (bottom <= top) return;
-      paper.insertAdjacentHTML("beforeend", `
-        <div class="band" style="top: ${percent(top / height)}; height: ${percent((bottom - top) / height)}">
-          <span class="band-label">on pages ${out + part + 1} and ${out + part + 2}</span>
-        </div>`);
+      const label = cols > 1 ? "" : `<span class="band-label">on pages ${first + row + 1} and ${first + row + 2}</span>`;
+      html.push(`<div class="band" style="${vertical(top, bottom)}">${label}</div>`);
     });
-    out += count;
+    page.columns.slice(1).forEach(([left], col) => {
+      const right = page.columns[col][1];
+      if (right > left) html.push(`<div class="band vertical" style="${horizontal(left, right)}"></div>`);
+    });
+    if (cols > 1) {
+      page.slices.forEach(([top, bottom], row) => page.columns.forEach(([left, right], col) => {
+        const sheet = first + row * cols + col;
+        html.push(`
+          <div class="cell" data-out="${sheet}" title="Page ${sheet + 1} of the split PDF"
+               style="${vertical(top, bottom)}; ${horizontal(left, right)}"><b>${sheet + 1}</b></div>`);
+      }));
+    }
+    paper.insertAdjacentHTML("beforeend", html.join(""));
   });
 }
 
+// The pages of paper, the pages of a poster in rows, as they are glued
 function renderSheets(plan, sheets) {
   const pages = allPages();
-  const [paperWidth, paperHeight] = plan.paper;
   const { margin, overlap } = plan;
-  const contentWidth = paperWidth - 2 * margin;
-  const contentHeight = paperHeight - 2 * margin;
-  const box = `left: ${percent(margin / paperWidth)}; top: ${percent(margin / paperHeight)};
-    width: ${percent(contentWidth / paperWidth)}; height: ${percent(contentHeight / paperHeight)}`;
-  const band = percent(Math.min(1, overlap / contentHeight));
-  $("#result").innerHTML = sheets.map(({ page, part, count, top, scale, left }, out) => {
+  const html = [];
+  sheets.forEach(({ page, row, col, rows, cols, part, count, top, left, scale, paper }, out) => {
     const { file, idx, size: [width, height] } = pages[page];
     const url = file.images[idx];
-    // a page that is shrunk is narrower than the paper, in its middle
-    const place = `left: ${percent(left / contentWidth)}; width: ${percent(width * scale / contentWidth)};
+    const [paperWidth, paperHeight] = paper;
+    const contentWidth = paperWidth - 2 * margin;
+    const contentHeight = paperHeight - 2 * margin;
+    const box = `left: ${percent(margin / paperWidth)}; top: ${percent(margin / paperHeight)};
+      width: ${percent(contentWidth / paperWidth)}; height: ${percent(contentHeight / paperHeight)}`;
+    // the page from the left of its column, which is left of the page if it
+    // is shrunk, and the top of its slice
+    const place = `left: ${percent(-left * scale / contentWidth)}; width: ${percent(width * scale / contentWidth)};
       transform: translateY(-${percent(top / height)})`;
-    const from = count > 1 ? `from page ${page + 1}, part ${part + 1} of ${count}` : `page ${page + 1}`;
-    return `
-      <div class="sheet-wrap" data-out="${out}">
+    const bandX = percent(Math.min(1, overlap / contentWidth));
+    const bandY = percent(Math.min(1, overlap / contentHeight));
+    const bands = overlap > 0 ? [
+      row > 0 && `<div class="band top" style="top: 0; height: ${bandY}"></div>`,
+      row < rows - 1 && `<div class="band bottom" style="bottom: 0; height: ${bandY}"></div>`,
+      col > 0 && `<div class="band left" style="left: 0; width: ${bandX}"></div>`,
+      col < cols - 1 && `<div class="band right" style="right: 0; width: ${bandX}"></div>`,
+    ].filter(Boolean).join("") : "";
+    const from = cols > 1 ? `page ${page + 1}, row ${row + 1}, column ${col + 1}`
+      : count > 1 ? `from page ${page + 1}, part ${part + 1} of ${count}` : `page ${page + 1}`;
+    // turned paper is wider than upright paper
+    const wide = paperWidth / plan.paper[0];
+    if (cols > 1 && col === 0) html.push(`<div class="sheet-row" style="--cols: ${cols}; --wide: ${wide}">`);
+    html.push(`
+      <div class="sheet-wrap" data-out="${out}" style="--wide: ${wide}">
         <div class="sheet-label">${out + 1}<span>· ${from}</span></div>
         <div class="sheet ${margin > 0 ? "has-margin" : ""}" data-page="${page}" style="aspect-ratio: ${paperWidth} / ${paperHeight}">
           <div class="sheet-content" style="${box}">
             <img alt="" style="${place}" ${url ? `src="${url}"` : "hidden"}>
-            ${overlap > 0 && part > 0 ? `<div class="band top" style="top: 0; height: ${band}"></div>` : ""}
-            ${overlap > 0 && part < count - 1 ? `<div class="band bottom" style="bottom: 0; height: ${band}"></div>` : ""}
+            ${bands}
           </div>
         </div>
-      </div>`;
-  }).join("");
+      </div>`);
+    if (cols > 1 && col === cols - 1) html.push("</div>");
+  });
+  $("#result").innerHTML = html.join("");
   unlink();
 }
 
@@ -734,7 +800,7 @@ function renderMeta() {
     ? `${plural(files.length, "file")} · ${plural(pages, "page")}`
     : files.length ? files[0].name + (pages ? ` · ${plural(pages, "page")}` : "") : "";
   $("#result-meta").textContent = plan
-    ? `${PAPERS[state.settings.paper].label} · ${plural(sheetsOf(plan).length, "page")}` : "";
+    ? `${plan.poster ? "Poster on " : ""}${PAPERS[state.settings.paper].label} · ${plural(sheetsOf(plan).length, "page")}` : "";
 }
 
 const ICON_WARN = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 21h20z"/><path d="M12 10v5"/><path d="M12 18h.01"/></svg>`;
@@ -745,15 +811,24 @@ function renderStatus() {
   const counts = $("#status-counts");
   const messages = [];
   if (plan) {
-    const split = plan.pages.filter((page) => page.slices.length > 1).length;
+    const split = plan.pages.filter((page) => page.slices.length * page.columns.length > 1).length;
     const out = sheetsOf(plan).length;
     counts.innerHTML = `<strong>${split}</strong> of ${plural(plan.pages.length, "page")} split · `
       + `<strong>${plan.pages.length} → ${out}</strong> ${out === 1 ? "page" : "pages"}`;
-    const scales = plan.pages.map((page) => Math.round(page.scale * 100));
-    const low = Math.min(...scales);
-    const high = Math.max(...scales);
-    messages.push(["info", `Scaled to ${low === high ? low : `${low}–${high}`}% to fit the width of ${PAPERS[state.settings.paper].label}`
-      + (plan.margin > 0 ? ` within the margins` : "") + "."]);
+    const paper = PAPERS[state.settings.paper].label;
+    if (plan.poster) {
+      // the size of the poster, which nothing scales but the printer
+      messages.push(["warning", "Print at actual size (100%), not fit to page."]);
+      messages.push(["info", `At ${state.settings.scale}%`
+        + (plan.pages.length === 1 ? `: ${pageNote(plan, plan.pages[0], pageSizes()[0]).slice(2)}` : "")
+        + ` of ${paper}.`]);
+    } else {
+      const scales = plan.pages.map((page) => Math.round(page.scale * 100));
+      const low = Math.min(...scales);
+      const high = Math.max(...scales);
+      messages.push(["info", `Scaled to ${low === high ? low : `${low}–${high}`}% to fit the width of ${paper}`
+        + (plan.margin > 0 ? ` within the margins` : "") + "."]);
+    }
   } else {
     counts.textContent = "";
   }
@@ -819,19 +894,24 @@ function highlight(out, on) {
   if (!sheet) return;
   const hl = $(`[data-orig="${sheet.page}"] .slice-hl`);
   if (!hl) return;
-  const height = pages[sheet.page][1];
+  const [width, height] = pages[sheet.page];
   hl.style.top = percent(sheet.top / height);
   hl.style.height = percent((Math.min(sheet.bottom, height) - sheet.top) / height);
+  // the column of a page in columns
+  const left = Math.max(0, sheet.left);
+  hl.style.left = sheet.cols > 1 ? percent(left / width) : "";
+  hl.style.width = sheet.cols > 1 ? percent((Math.min(sheet.right, width) - left) / width) : "";
+  hl.style.right = sheet.cols > 1 ? "auto" : "";
   hl.classList.toggle("show", on);
 }
 
 for (const pane of ["#original", "#result"]) {
   $(pane).addEventListener("mouseover", (event) => {
-    const el = event.target.closest(pane === "#original" ? ".bracket" : ".sheet-wrap");
+    const el = event.target.closest(pane === "#original" ? ".bracket, .cell" : ".sheet-wrap");
     if (el && state.view === "both") highlight(Number(el.dataset.out), true);
   });
   $(pane).addEventListener("mouseout", (event) => {
-    const el = event.target.closest(pane === "#original" ? ".bracket" : ".sheet-wrap");
+    const el = event.target.closest(pane === "#original" ? ".bracket, .cell" : ".sheet-wrap");
     if (el && !el.contains(event.relatedTarget)) highlight(Number(el.dataset.out), false);
   });
 }
@@ -843,7 +923,7 @@ function scrollWithin(scroller, el, offset = 0) {
 
 // Clicking a slice shows its page of paper, and the other way round
 $("#original").addEventListener("click", (event) => {
-  const bracket = event.target.closest(".bracket");
+  const bracket = event.target.closest(".bracket, .cell");
   if (!bracket || state.view !== "both") return;
   const wrap = $(`#result .sheet-wrap[data-out="${bracket.dataset.out}"]`);
   if (!wrap) return;
@@ -903,13 +983,15 @@ function linkMap(from) {
   const pages = pageSizes();
   const points = [[0, 0]];
   if (plan && pages && plan.pages.length === pages.length) {
-    const contentWidth = plan.paper[0] - 2 * plan.margin;
     let out = 0;
     plan.pages.forEach((page, idx) => {
+      const contentWidth = page.paper[0] - 2 * plan.margin;
+      const cols = page.columns.length;
       const paper = $(`[data-orig="${idx}"] .paper`, panes.original.el);
-      const contents = page.slices.map((_, part) =>
-        $(`.sheet-wrap[data-out="${out + part}"] .sheet-content`, panes.result.el));
-      out += page.slices.length;
+      // the first page of paper of each row, whose row is side by side
+      const contents = page.slices.map((_, row) =>
+        $(`.sheet-wrap[data-out="${out + row * cols}"] .sheet-content`, panes.result.el));
+      out += page.slices.length * cols;
       if (!paper || contents.some((el) => !el)) return;
       const height = pages[idx][1];
       const paperTop = topIn(panes.original, paper);
@@ -1013,10 +1095,10 @@ function saveBlob(blob, name) {
   setTimeout(() => URL.revokeObjectURL(link.href), 1000);
 }
 
-// notes.pdf, or notes.png, is saved as notes-a4.pdf, and with other files
-// after it as notes-combined-a4.pdf
-const splitName = (files, paper) =>
-  `${files[0].name.replace(/\.[a-z0-9]{1,5}$/i, "")}${files.length > 1 ? "-combined" : ""}-${paper}.pdf`;
+// notes.pdf, or notes.png, is saved as notes-a4.pdf, with other files after
+// it as notes-combined-a4.pdf, and as a poster as notes-poster-a4.pdf
+const splitName = (files, { paper, poster }) =>
+  `${files[0].name.replace(/\.[a-z0-9]{1,5}$/i, "")}${files.length > 1 ? "-combined" : ""}${poster ? "-poster" : ""}-${paper}.pdf`;
 // The split PDF is written again only when the settings or the files change
 const outputKey = () => JSON.stringify([state.settings, state.files.map((file) => file.id)]);
 
@@ -1024,7 +1106,7 @@ const outputKey = () => JSON.stringify([state.settings, state.files.map((file) =
 function split(action) {
   const { files, plan } = state;
   if (!files.length || !plan || !state.ready) return;
-  const name = splitName(files, state.settings.paper);
+  const name = splitName(files, state.settings);
   if (state.output && state.output.key === outputKey()) {
     deliver(action, state.output.data, name);
     return;

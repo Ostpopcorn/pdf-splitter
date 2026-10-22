@@ -22,13 +22,9 @@ def _bytes(data):
 
 
 def _options(request):
-    options = {}
-    for _key, _value in request.get("options", {}).items():
-        if _key == "paper":
-            options[_key] = str(_value)
-        elif _key in _OPTIONS:
-            options[_key] = float(_value)
-    return Options(**options)
+    # each option as its type, e.g., the paper as str, the overlap as float
+    return Options(**{_key: _OPTIONS[_key](_value) for _key, _value
+                      in request.get("options", {}).items() if _key in _OPTIONS})
 
 
 def read(data):
@@ -67,9 +63,10 @@ def jpeg(data):
 def plan(request_json):
     """Return the paper and the layout of the pages of a request, each page
     with its width and height in points, or an error. The slices are in
-    points from the top of the page. The paper, its margin, the overlap, and
-    the space on the left of a page that is shrunk are in points on the
-    paper."""
+    points from the top of the page, the columns from its left. The paper,
+    upright, and the paper of each page, which may be turned, its margin,
+    the overlap, and the space on the left of a page that is shrunk are in
+    points on the paper."""
     request = json.loads(request_json)
     try:
         options = _options(request)
@@ -83,8 +80,10 @@ def plan(request_json):
         "margin": options.margin * MM,
         "overlap": options.overlap * MM,
         "max_overlap": max_overlap(options),
+        "poster": options.poster,
         "pages": [{"scale": _layout.scale, "slices": _layout.slices,
-                   "left": _layout.left} for _layout in layouts],
+                   "columns": _layout.columns, "left": _layout.left,
+                   "paper": _layout.paper} for _layout in layouts],
     })
 
 

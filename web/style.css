@@ -251,6 +251,12 @@ body:not(.has-files) .views { display: none; }
 .segmented input:focus-visible + span { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .range { display: flex; align-items: center; gap: 10px; min-height: 30px; }
+.size-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.size-row .range { flex: 1 1 200px; }
+body:not(.poster) .for-poster, body.poster .for-split { display: none; }
+.check { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.check input { margin: 0; accent-color: var(--accent); cursor: pointer; }
+.check:hover { color: var(--text); }
 .range input[type="range"] { flex: 1; min-width: 80px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .number {
   display: inline-flex;
@@ -275,6 +281,8 @@ body:not(.has-files) .views { display: none; }
   -moz-appearance: textfield;
 }
 .number input:focus-visible { outline: 0; }
+/* a scale like 137.5 */
+#scale-number { width: 56px; }
 .number input::-webkit-inner-spin-button { margin-left: 2px; }
 
 /* Workspace */
@@ -443,6 +451,36 @@ body:not(.view-both) .bracket { cursor: default; }
 }
 .band.top { border-top: 0; }
 .band.bottom { border-bottom: 0; }
+/* The overlaps of columns */
+.band.vertical, .band.left, .band.right {
+  top: 0;
+  bottom: 0;
+  left: auto;
+  right: auto;
+  border-block: 0;
+  border-inline: 1.5px dashed var(--band-line);
+}
+.band.left { border-left: 0; }
+.band.right { border-right: 0; }
+/* The pages of paper of a page in columns, numbered at their top left */
+.cell { position: absolute; z-index: 1; border-radius: 3px; }
+.cell b {
+  position: absolute;
+  top: 5px;
+  left: 5px;
+  display: grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border-strong);
+  color: var(--muted);
+  font: 600 10.5px/1 var(--ui-font);
+}
+body.view-both .cell { cursor: pointer; }
+.cell.hl b, body.view-both .cell:hover b { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
 .band-label {
   position: absolute;
   right: 6px;
@@ -469,8 +507,20 @@ body:not(.view-both) .bracket { cursor: default; }
 
 /* The pages of paper of the result */
 
-.sheet-wrap { max-width: 454px; margin: 0 auto 22px; padding-left: 34px; }
+/* Turned paper is wider */
+.sheet-wrap { max-width: calc(420px * var(--wide, 1) + 34px); margin: 0 auto 22px; padding-left: 34px; }
 .sheet-wrap .sheet-label { margin-left: 0; }
+/* The pages of paper of a row of a poster, side by side */
+.sheet-row {
+  display: flex;
+  gap: 10px;
+  max-width: calc((420px * var(--wide, 1) + 10px) * var(--cols) + 24px);
+  margin: 0 auto 22px;
+  padding-left: 34px;
+}
+.sheet-row .sheet-wrap { flex: 1 1 0; min-width: 0; max-width: none; margin: 0; padding-left: 0; }
+.sheet-row .sheet-label { white-space: nowrap; }
+.sheet-row .sheet-label span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sheet { position: relative; background: #fff; box-shadow: var(--paper-shadow); outline: 2px solid transparent; outline-offset: 3px; transition: outline-color .12s; }
 body.view-both .sheet { cursor: pointer; }
 body.view-both .sheet:hover, .sheet-wrap.hl .sheet { outline-color: var(--accent); }
@@ -484,7 +534,10 @@ body.view-original .scroller, body.view-split .scroller {
   justify-content: center;
   gap: 24px 36px;
 }
-body.view-original .orig, body.view-split .sheet-wrap { flex: 0 1 454px; margin: 0; }
+body.view-original .orig { flex: 0 1 454px; margin: 0; }
+body.view-split .sheet-wrap { flex: 0 1 calc(420px * var(--wide, 1) + 34px); margin: 0; }
+body.view-split .sheet-row { flex: 1 1 100%; margin: 0; }
+body.view-split .sheet-row .sheet-wrap { flex: 1 1 0; }
 
 /* The split PDF that is printed, which must be shown to be printed */
 .print-frame { position: fixed; left: -10000px; top: 0; width: 600px; height: 800px; border: 0; }
